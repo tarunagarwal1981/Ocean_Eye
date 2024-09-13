@@ -1,73 +1,90 @@
-#%pip install tabulate 
-#%pip install python-docx 
-#%pip install streamlit
-
-import streamlit as st
+# Import necessary libraries
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import psycopg2
+import streamlit as st
 from datetime import datetime, timedelta
 
-from pyspark.sql import SparkSession
-
-# Initialize a Spark session if not already running within Databricks
-spark = SparkSession.builder \
-    .appName("Streamlit Databricks Connection") \
-    .getOrCreate()
-
-# Function to fetch data from Databricks using Spark SQL
-def fetch_table_data_as_pandas(sql_query):
-    # Fetch the data using Spark SQL and convert it to a Pandas DataFrame
-    df = spark.sql(sql_query).toPandas()
-    return df
-
-# Function to fetch data from Databricks using Spark SQL
-def fetch_table_data_as_pandas(sql_query):
-    # Fetch the data using Spark SQL and convert it to a Pandas DataFrame
-    df = spark.sql(sql_query).toPandas()
-    return df
-
+# Function to fetch data from Koyeb PostgreSQL
+def fetch_table_data_from_koyeb(vessel_name):
+    # Koyeb PostgreSQL connection details
+    koyeb_host = "ep-rapid-wind-a1jdywyi.ap-southeast-1.pg.koyeb.app"
+    koyeb_database = "koyebdb"
+    koyeb_user = "koyeb-adm"
+    koyeb_password = "YBK7jd6wLaRD"
+    koyeb_port = "5432"
     
-# Function to generate the plot for hull roughness power loss
+    # Establish connection to the database
+    conn = psycopg2.connect(
+        host=koyeb_host,
+        database=koyeb_database,
+        user=koyeb_user,
+        password=koyeb_password,
+        port=koyeb_port
+    )
+    
+    # Define the query to fetch data for the specified vessel
+    query = f"""
+    SELECT vessel_name, event_date, hull_rough_power_loss_pct_st
+    FROM hull_performance_six_months
+    WHERE UPPER(vessel_name) = '{vessel_name.upper()}'
+    """
+    
+    # Fetch data
+    data = pd.read_sql(query, conn)
+    
+    # Close the connection
+    conn.close()
+    
+    return data
+
+# Function to generate scatter plot for hull roughness power loss with best fit line
 def plot_hull_roughness(vessel_name):
-    # Convert vessel name to upper case to ensure case insensitivity
-    vessel_name = vessel_name.upper()
+    # Fetch data from Koyeb PostgreSQL
+    data = fetch_table_data_from_koyeb(vessel_name)
     
-    # Define the SQL query (for actual use on Databricks, fetch data from the actual table)
-    data_query = f"SELECT * FROM reporting_layer.digital_desk.hull_performance WHERE vessel_name = '{vessel_name}'"
-    
-    # Fetch the data from the table (mocked for Streamlit here)
-    data = fetch_table_data_as_pandas(data_query)
-    
-    # Filter data for the specific vessel
-    data = data[data['vessel_name'] == vessel_name]
-
+    # Check if there's data for the vessel
     if data.empty:
-        st.error(f"No data available for vessel '{vessel_name}'. Please check the vessel name.")
+        st.error(f"No data available for vessel '{vessel_name}'")
+        return
+    
+    # Convert event_date to datetime format and filter the last 6 months
+    data['event_date'] = pd.to_datetime(data['event_date'], errors='coerce')
+    today = datetime.today().date()
+    six_months_ago = today - timedelta(days=180)
+    
+    # Filter for data from the last 6 months
+    filtered_data = data[(data['event_date'].dt.date >= six_months_ago) & (data['hull_rough_power_loss_pct_st'].notnull())]
+    
+    if filtered_data.empty:
+        st.error(f"No data available for vessel '{vessel_name}' in the last 6 months.")
         return
     
     # Extract the necessary columns
-    dates = pd.to_datetime(data['report_date'])  # Ensure the dates are in datetime format
-    power_loss = data['hull_roughness_power_loss']
+    dates = pd.to_datetime(filtered_data['event_date'])  # Ensure the dates are in datetime format
+    power_loss = filtered_data['hull_rough_power_loss_pct_st']
     
-    # Calculate difference in days (for trendline)
-    x_numeric = (dates - dates.min()).dt.days
+    # Calculate difference in days
+    x_numeric = (dates - dates.min()).dt.days  # Convert dates to numeric (difference in days from the minimum date)
     
     # Plot the scatter plot
     fig, ax = plt.subplots(figsize=(10, 6))
-    ax.scatter(dates, power_loss, c='cyan', edgecolors='white', s=50, alpha=0.8, label='Hull Roughness Power Loss')  # Reduced size of scatter dots
+    ax.scatter(dates, power_loss, c='cyan', edgecolors='white', s=50, alpha=0.8)  # Reduced size of scatter dots
     
     # Add best-fit line (linear regression)
     coeffs = np.polyfit(x_numeric, power_loss, 1)
     best_fit_line = np.poly1d(coeffs)
     
-    # Generate x-values for the best-fit line
+    # Generate x-values for the best fit line
     x_smooth = np.linspace(x_numeric.min(), x_numeric.max(), 200)
     ax.plot(dates.min() + pd.to_timedelta(x_smooth, unit='D'), best_fit_line(x_smooth), color='#00FF00', linewidth=2, linestyle='-', label='Best Fit Line')  # Neon green line
     
-    # Set background color and labels
+    # Set background color
     ax.set_facecolor('#000C20')
     fig.patch.set_facecolor('#000C20')
+    
+    # Set axis labels and title
     ax.set_xlabel('Dates', fontsize=12, color='white')
     ax.set_ylabel('Excess Power %', fontsize=12, color='white')
     ax.set_title(f'Hull Roughness Power Loss - {vessel_name}', fontsize=14, color='white')
@@ -84,13 +101,13 @@ def plot_hull_roughness(vessel_name):
     ax.set_xlim(dates.min(), dates.max())
     ax.set_ylim(power_loss.min() - 0.05 * (power_loss.max() - power_loss.min()), power_loss.max() + 0.05 * (power_loss.max() - power_loss.min()))
     
-    # Add legend for the best-fit line
+    # Add legend for the best fit line
     ax.legend(loc='upper left', fontsize=10, frameon=False, facecolor='none', edgecolor='none', labelcolor='white')
     
-    # Return the figure to be displayed in Streamlit
+    # Return the figure for display in Streamlit
     return fig
 
-# Streamlit app UI
+# Streamlit App UI
 
 # Title of the Streamlit App
 st.title("Hull Roughness Power Loss Analysis")
