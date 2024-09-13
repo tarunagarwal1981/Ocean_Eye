@@ -1,7 +1,5 @@
 streamlit
-openai
-tabulate
+psycopg2-binary
 matplotlib
+pandas
 numpy
-tabulate
-pyspark
