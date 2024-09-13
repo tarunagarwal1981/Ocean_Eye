@@ -26,8 +26,8 @@ def fetch_table_data_from_koyeb(vessel_name):
     
     # Define the query to fetch data for the specified vessel
     query = f"""
-    SELECT vessel_name, report_date, hull_roughness_power_loss
-    FROM hull_performance
+    SELECT vessel_name, report_date, hull_roughness_power_loss, hull_rough_power_loss_pct_ed
+    FROM hull_performance_six_months
     WHERE UPPER(vessel_name) = '{vessel_name.upper()}'
     """
     
@@ -47,9 +47,9 @@ def plot_hull_roughness(vessel_name):
     # Check if there's data for the vessel
     if data.empty:
         st.error(f"No data available for vessel '{vessel_name}'")
-        return
+        return None, None
     
-    # Convert event_date to datetime format and filter the last 6 months
+    # Convert report_date to datetime format and filter the last 6 months
     data['report_date'] = pd.to_datetime(data['report_date'], errors='coerce')
     today = datetime.today().date()
     six_months_ago = today - timedelta(days=180)
@@ -59,7 +59,7 @@ def plot_hull_roughness(vessel_name):
     
     if filtered_data.empty:
         st.error(f"No data available for vessel '{vessel_name}' in the last 6 months.")
-        return
+        return None, None
     
     # Extract the necessary columns
     dates = pd.to_datetime(filtered_data['report_date'])  # Ensure the dates are in datetime format
@@ -104,8 +104,17 @@ def plot_hull_roughness(vessel_name):
     # Add legend for the best fit line
     ax.legend(loc='upper left', fontsize=10, frameon=False, facecolor='none', edgecolor='none', labelcolor='white')
     
-    # Return the figure for display in Streamlit
-    return fig
+    # Return the figure and the hull_rough_power_loss_pct_ed for further display
+    return fig, data['hull_rough_power_loss_pct_ed'].iloc[-1]  # Return the most recent power loss percentage
+
+# Function to determine hull condition based on hull_rough_power_loss_pct_ed
+def get_hull_condition(power_loss_pct):
+    if power_loss_pct > 25:
+        return "Poor"
+    elif 15 <= power_loss_pct <= 25:
+        return "Average"
+    else:
+        return "Good"
 
 # Streamlit App UI
 
@@ -118,8 +127,12 @@ vessel_name = st.text_input("Enter the vessel name:")
 # Button to trigger the chart generation
 if st.button("Generate Chart"):
     if vessel_name:
-        chart = plot_hull_roughness(vessel_name)
+        chart, power_loss_pct_ed = plot_hull_roughness(vessel_name)
         if chart:
             st.pyplot(chart)
+            if power_loss_pct_ed is not None:
+                hull_condition = get_hull_condition(power_loss_pct_ed)
+                st.markdown(f"**Excess Power %: {power_loss_pct_ed:.2f}%**")
+                st.markdown(f"**Hull Condition: {hull_condition}**")
     else:
         st.error("Please enter a vessel name.")
