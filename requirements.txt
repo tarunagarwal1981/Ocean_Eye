@@ -2,3 +2,7 @@ streamlit
 openai
 tabulate
 python-dox
+matplotlib
+numpy
+tabulate
+python-dox
