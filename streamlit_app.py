@@ -27,7 +27,7 @@ def fetch_table_data_from_koyeb(vessel_name):
     # Define the query to fetch data for the specified vessel
     query = f"""
     SELECT vessel_name, event_date, hull_rough_power_loss_pct_st
-    FROM hull_performance_six_months
+    FROM hull_performance
     WHERE UPPER(vessel_name) = '{vessel_name.upper()}'
     """
     
