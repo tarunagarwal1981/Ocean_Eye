@@ -1,11 +1,25 @@
 #%pip install tabulate 
 #%pip install python-docx 
 #%pip install streamlit
+
 import streamlit as st
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
+
+from pyspark.sql import SparkSession
+
+# Initialize a Spark session if not already running within Databricks
+spark = SparkSession.builder \
+    .appName("Streamlit Databricks Connection") \
+    .getOrCreate()
+
+# Function to fetch data from Databricks using Spark SQL
+def fetch_table_data_as_pandas(sql_query):
+    # Fetch the data using Spark SQL and convert it to a Pandas DataFrame
+    df = spark.sql(sql_query).toPandas()
+    return df
 
 # Function to fetch data from Databricks using Spark SQL
 def fetch_table_data_as_pandas(sql_query):
