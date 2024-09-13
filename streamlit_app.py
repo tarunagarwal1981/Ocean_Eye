@@ -9,20 +9,11 @@ from datetime import datetime, timedelta
 
 # Function to fetch data from Databricks using Spark SQL
 def fetch_table_data_as_pandas(sql_query):
-    # Mocking the actual database connection in Databricks (as this is running on Streamlit)
-    # In production, replace this with the actual spark.sql query on Databricks.
-    # Example:
-    # return spark.sql(sql_query).toPandas()
-
-    # Sample dataframe simulating the output of the database fetch
-    data = {
-        'vessel_name': ['VESSEL_A', 'VESSEL_A', 'VESSEL_A', 'VESSEL_B', 'VESSEL_B'],
-        'report_date': pd.to_datetime(['2024-01-01', '2024-02-01', '2024-03-01', '2024-01-15', '2024-03-15']),
-        'hull_roughness_power_loss': [0.5, 1.2, 1.7, 0.3, 1.1]
-    }
-    df = pd.DataFrame(data)
+    # Fetch the data using Spark SQL and convert it to a Pandas DataFrame
+    df = spark.sql(sql_query).toPandas()
     return df
 
+    
 # Function to generate the plot for hull roughness power loss
 def plot_hull_roughness(vessel_name):
     # Convert vessel name to upper case to ensure case insensitivity
