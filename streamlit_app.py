@@ -26,7 +26,7 @@ def fetch_table_data_from_koyeb(vessel_name):
     
     # Define the query to fetch data for the specified vessel
     query = f"""
-    SELECT vessel_name, event_date, hull_rough_power_loss_pct_st
+    SELECT vessel_name, event_date, hull_roughness_power_loss
     FROM hull_performance
     WHERE UPPER(vessel_name) = '{vessel_name.upper()}'
     """
@@ -55,7 +55,7 @@ def plot_hull_roughness(vessel_name):
     six_months_ago = today - timedelta(days=180)
     
     # Filter for data from the last 6 months
-    filtered_data = data[(data['event_date'].dt.date >= six_months_ago) & (data['hull_rough_power_loss_pct_st'].notnull())]
+    filtered_data = data[(data['event_date'].dt.date >= six_months_ago) & (data['hull_roughness_power_loss'].notnull())]
     
     if filtered_data.empty:
         st.error(f"No data available for vessel '{vessel_name}' in the last 6 months.")
@@ -63,7 +63,7 @@ def plot_hull_roughness(vessel_name):
     
     # Extract the necessary columns
     dates = pd.to_datetime(filtered_data['event_date'])  # Ensure the dates are in datetime format
-    power_loss = filtered_data['hull_rough_power_loss_pct_st']
+    power_loss = filtered_data['hull_roughness_power_loss']
     
     # Calculate difference in days
     x_numeric = (dates - dates.min()).dt.days  # Convert dates to numeric (difference in days from the minimum date)
