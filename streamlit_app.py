@@ -3,8 +3,16 @@ import openai
 from utils.nlp_utils import process_user_input, extract_vessel_name
 from modules.hull_performance import analyze_hull_performance
 
-# Set up your OpenAI API key
-openai.api_key = 'your-api-key-here'
+def get_api_key():
+    """Retrieve the API key from Streamlit secrets or environment variables."""
+    if 'openai' in st.secrets:
+        return st.secrets['openai']['api_key']
+    api_key = os.getenv('OPENAI_API_KEY')
+    if api_key is None:
+        raise ValueError("API key not found. Set OPENAI_API_KEY as an environment variable.")
+    return api_key
+
+openai.api_key = get_api_key()
 
 def get_gpt_response(prompt):
     try:
