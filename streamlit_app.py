@@ -1,18 +1,10 @@
 import streamlit as st
 import openai
-from utils.nlp_utils import process_user_input
+from utils.nlp_utils import process_user_input, extract_vessel_name
 from modules.hull_performance import analyze_hull_performance
 
-def get_api_key():
-    """Retrieve the API key from Streamlit secrets or environment variables."""
-    if 'openai' in st.secrets:
-        return st.secrets['openai']['api_key']
-    api_key = os.getenv('OPENAI_API_KEY')
-    if api_key is None:
-        raise ValueError("API key not found. Set OPENAI_API_KEY as an environment variable.")
-    return api_key
-
-openai.api_key = get_api_key()
+# Set up your OpenAI API key
+openai.api_key = 'your-api-key-here'
 
 def get_gpt_response(prompt):
     try:
@@ -31,33 +23,38 @@ def get_gpt_response(prompt):
     except Exception as e:
         st.error(f"Error in GPT response: {str(e)}")
         return "I'm sorry, I encountered an error while processing your request."
-        
-def handle_user_query(user_input: str) -> str:
-    intent, vessel_name = process_user_input(user_input)
-    
-    if intent == "hull_performance" and vessel_name:
-        chart, power_loss, hull_condition = analyze_hull_performance(vessel_name)
-        if chart:
-            st.pyplot(chart)
-            return f"Here's the hull performance analysis for {vessel_name}. The excess power is {power_loss:.2f}% and the hull condition is {hull_condition}."
-        else:
-            return f"Sorry, I couldn't find hull performance data for {vessel_name}."
-    elif intent in ["fuel_efficiency", "speed_performance", "general_info"]:
-        # For now, we'll use GPT to handle these intents
-        gpt_prompt = f"Provide a brief, informative response about {intent} for the vessel {vessel_name} in the context of maritime vessel performance."
-        return get_gpt_response(gpt_prompt)
-    else:
-        # For unknown intents, we'll use GPT to generate a response
-        gpt_prompt = f"The user asked: '{user_input}'. Provide a helpful response related to vessel performance."
-        return get_gpt_response(gpt_prompt)
 
+def handle_user_query(user_input: str) -> str:
+    intent, vessel_present = process_user_input(user_input)
+    
+    if intent == "hull_performance":
+        if vessel_present:
+            vessel_name = extract_vessel_name(user_input)
+            return process_hull_performance(vessel_name)
+        else:
+            generic_response = get_gpt_response("Provide general information about hull performance in maritime vessels.")
+            return f"{generic_response}\n\nTo provide specific hull performance data, I need a vessel name. Could you please provide one?"
+    elif intent in ["fuel_efficiency", "speed_performance", "general_info"]:
+        return get_gpt_response(f"Provide information about {intent} in the context of maritime vessels.")
+    else:
+        return get_gpt_response(f"The user asked: '{user_input}'. Provide a helpful response related to vessel performance.")
+
+def process_hull_performance(vessel_name: str) -> str:
+    chart, power_loss, hull_condition = analyze_hull_performance(vessel_name)
+    if chart and power_loss is not None and hull_condition:
+        st.pyplot(chart)
+        return f"Here's the hull performance analysis for {vessel_name}. The excess power is {power_loss:.2f}% and the hull condition is {hull_condition}."
+    else:
+        return f"Sorry, I couldn't find specific hull performance data for {vessel_name}."
 
 def main():
     st.title("Vessel Performance Chatbot")
 
-    # Initialize chat history
+    # Initialize chat history and conversation state
     if 'messages' not in st.session_state:
         st.session_state.messages = []
+    if 'awaiting_vessel_name' not in st.session_state:
+        st.session_state.awaiting_vessel_name = False
 
     # Display chat messages
     for message in st.session_state.messages:
@@ -71,8 +68,14 @@ def main():
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        # Get chatbot response
-        response = handle_user_query(prompt)
+        # Process user input
+        if st.session_state.awaiting_vessel_name:
+            response = process_hull_performance(prompt)
+            st.session_state.awaiting_vessel_name = False
+        else:
+            response = handle_user_query(prompt)
+            if "Could you please provide one?" in response:
+                st.session_state.awaiting_vessel_name = True
 
         # Add assistant response to chat history
         st.session_state.messages.append({"role": "assistant", "content": response})
