@@ -1,180 +1,71 @@
-# Import necessary libraries
-import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import psycopg2
 import streamlit as st
-from datetime import datetime, timedelta
+import openai
+from utils.nlp_utils import process_user_input
+from modules.hull_performance import analyze_hull_performance
 
-# Function to fetch data from hull_performance table
-def fetch_performance_data(vessel_name):
-    # Koyeb PostgreSQL connection details
-    koyeb_host = "ep-rapid-wind-a1jdywyi.ap-southeast-1.pg.koyeb.app"
-    koyeb_database = "koyebdb"
-    koyeb_user = "koyeb-adm"
-    koyeb_password = "YBK7jd6wLaRD"
-    koyeb_port = "5432"
-    
-    # Establish connection to the database
-    conn = psycopg2.connect(
-        host=koyeb_host,
-        database=koyeb_database,
-        user=koyeb_user,
-        password=koyeb_password,
-        port=koyeb_port
-    )
-    
-    # Define the query to fetch data for the specified vessel
-    query = f"""
-    SELECT vessel_name, report_date, hull_roughness_power_loss
-    FROM hull_performance
-    WHERE UPPER(vessel_name) = '{vessel_name.upper()}'
-    """
-    
-    # Fetch data
-    data = pd.read_sql(query, conn)
-    
-    # Close the connection
-    conn.close()
-    
-    return data
+# Set up your OpenAI API key
+openai.api_key = 'your-api-key-here'
 
-# Function to fetch data from hull_performance_six_months table for hull_rough_power_loss_pct_ed
-def fetch_six_months_data(vessel_name):
-    # Koyeb PostgreSQL connection details
-    koyeb_host = "ep-rapid-wind-a1jdywyi.ap-southeast-1.pg.koyeb.app"
-    koyeb_database = "koyebdb"
-    koyeb_user = "koyeb-adm"
-    koyeb_password = "YBK7jd6wLaRD"
-    koyeb_port = "5432"
-    
-    # Establish connection to the database
-    conn = psycopg2.connect(
-        host=koyeb_host,
-        database=koyeb_database,
-        user=koyeb_user,
-        password=koyeb_password,
-        port=koyeb_port
-    )
-    
-    # Define the query to fetch hull_rough_power_loss_pct_ed for the specified vessel
-    query = f"""
-    SELECT vessel_name, hull_rough_power_loss_pct_ed
-    FROM hull_performance_six_months
-    WHERE UPPER(vessel_name) = '{vessel_name.upper()}'
-    """
-    
-    # Fetch data
-    data = pd.read_sql(query, conn)
-    
-    # Close the connection
-    conn.close()
-    
-    return data
+def get_gpt_response(prompt):
+    try:
+        response = openai.Completion.create(
+            engine="text-davinci-002",
+            prompt=prompt,
+            max_tokens=150,
+            n=1,
+            stop=None,
+            temperature=0.5,
+        )
+        return response.choices[0].text.strip()
+    except Exception as e:
+        st.error(f"Error in GPT response: {str(e)}")
+        return "I'm sorry, I encountered an error while processing your request."
 
-# Function to generate scatter plot for hull roughness power loss with best fit line
-def plot_hull_roughness(vessel_name):
-    # Fetch data from hull_performance table for scatter plot
-    data = fetch_performance_data(vessel_name)
+def handle_user_query(user_input: str) -> str:
+    intent, vessel_name = process_user_input(user_input)
     
-    # Check if there's data for the vessel
-    if data.empty:
-        st.error(f"No data available for vessel '{vessel_name}'")
-        return None
-    
-    # Convert report_date to datetime format and filter the last 6 months
-    data['report_date'] = pd.to_datetime(data['report_date'], errors='coerce')
-    today = datetime.today().date()
-    six_months_ago = today - timedelta(days=180)
-    
-    # Filter for data from the last 6 months
-    filtered_data = data[(data['report_date'].dt.date >= six_months_ago) & (data['hull_roughness_power_loss'].notnull())]
-    
-    if filtered_data.empty:
-        st.error(f"No data available for vessel '{vessel_name}' in the last 6 months.")
-        return None
-    
-    # Extract the necessary columns
-    dates = pd.to_datetime(filtered_data['report_date'])  # Ensure the dates are in datetime format
-    power_loss = filtered_data['hull_roughness_power_loss']
-    
-    # Calculate difference in days
-    x_numeric = (dates - dates.min()).dt.days  # Convert dates to numeric (difference in days from the minimum date)
-    
-    # Plot the scatter plot
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.scatter(dates, power_loss, c='cyan', edgecolors='white', s=50, alpha=0.8)  # Reduced size of scatter dots
-    
-    # Add best-fit line (linear regression)
-    coeffs = np.polyfit(x_numeric, power_loss, 1)
-    best_fit_line = np.poly1d(coeffs)
-    
-    # Generate x-values for the best fit line
-    x_smooth = np.linspace(x_numeric.min(), x_numeric.max(), 200)
-    ax.plot(dates.min() + pd.to_timedelta(x_smooth, unit='D'), best_fit_line(x_smooth), color='#00FF00', linewidth=2, linestyle='-', label='Best Fit Line')  # Neon green line
-    
-    # Set background color
-    ax.set_facecolor('#000C20')
-    fig.patch.set_facecolor('#000C20')
-    
-    # Set axis labels and title
-    ax.set_xlabel('Dates', fontsize=12, color='white')
-    ax.set_ylabel('Excess Power %', fontsize=12, color='white')
-    ax.set_title(f'Hull Roughness Power Loss - {vessel_name}', fontsize=14, color='white')
-    
-    # Format x-axis to show only months
-    ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%b'))
-    ax.xaxis.set_major_locator(plt.matplotlib.dates.MonthLocator())
-    
-    # Adjust tick parameters
-    plt.xticks(color='white', fontsize=10)
-    plt.yticks(color='white', fontsize=10)
-    
-    # Dynamically adjust axis limits using max() and min()
-    ax.set_xlim(dates.min(), dates.max())
-    ax.set_ylim(power_loss.min() - 0.05 * (power_loss.max() - power_loss.min()), power_loss.max() + 0.05 * (power_loss.max() - power_loss.min()))
-    
-    # Add legend for the best fit line
-    ax.legend(loc='upper left', fontsize=10, frameon=False, facecolor='none', edgecolor='none', labelcolor='white')
-    
-    # Return the figure for display in Streamlit
-    return fig
-
-# Function to determine hull condition based on hull_rough_power_loss_pct_ed
-def get_hull_condition(power_loss_pct):
-    if power_loss_pct > 25:
-        return "Poor"
-    elif 15 <= power_loss_pct <= 25:
-        return "Average"
-    else:
-        return "Good"
-
-# Streamlit App UI
-
-# Title of the Streamlit App
-st.title("Hull Roughness Power Loss Analysis")
-
-# User input for vessel name
-vessel_name = st.text_input("Enter the vessel name:")
-
-# Button to trigger the chart generation
-if st.button("Generate Chart"):
-    if vessel_name:
-        # Plot the hull roughness data
-        chart = plot_hull_roughness(vessel_name)
+    if intent == "hull_performance" and vessel_name:
+        chart, power_loss, hull_condition = analyze_hull_performance(vessel_name)
         if chart:
             st.pyplot(chart)
-            
-            # Fetch the power loss percentage data from hull_performance_six_months
-            six_months_data = fetch_six_months_data(vessel_name)
-            if not six_months_data.empty:
-                power_loss_pct_ed = six_months_data['hull_rough_power_loss_pct_ed'].iloc[-1]  # Get the most recent value
-                hull_condition = get_hull_condition(power_loss_pct_ed)
-                
-                # Display the excess power percentage and hull condition
-                st.markdown(f"**Excess Power %: {power_loss_pct_ed:.2f}%**")
-                st.markdown(f"**Hull Condition: {hull_condition}**")
-            else:
-                st.warning(f"No 'Excess Power %' data available for vessel '{vessel_name}'.")
+            return f"Here's the hull performance analysis for {vessel_name}. The excess power is {power_loss:.2f}% and the hull condition is {hull_condition}."
+        else:
+            return f"Sorry, I couldn't find hull performance data for {vessel_name}."
+    elif intent in ["fuel_efficiency", "speed_performance", "general_info"]:
+        # For now, we'll use GPT to handle these intents
+        gpt_prompt = f"User asked about {intent} for vessel {vessel_name}. Provide a brief, informative response about {intent} in the context of maritime vessels."
+        return get_gpt_response(gpt_prompt)
     else:
-        st.error("Please enter a vessel name.")
+        # For unknown intents, we'll use GPT to generate a response
+        gpt_prompt = f"User: {user_input}\nAssistant: As an AI specialized in vessel performance, "
+        return get_gpt_response(gpt_prompt)
+
+def main():
+    st.title("Vessel Performance Chatbot")
+
+    # Initialize chat history
+    if 'messages' not in st.session_state:
+        st.session_state.messages = []
+
+    # Display chat messages
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+
+    # Chat input
+    if prompt := st.chat_input("What would you like to know about vessel performance?"):
+        # Add user message to chat history
+        st.session_state.messages.append({"role": "user", "content": prompt})
+        with st.chat_message("user"):
+            st.markdown(prompt)
+
+        # Get chatbot response
+        response = handle_user_query(prompt)
+
+        # Add assistant response to chat history
+        st.session_state.messages.append({"role": "assistant", "content": response})
+        with st.chat_message("assistant"):
+            st.markdown(response)
+
+if __name__ == "__main__":
+    main()
