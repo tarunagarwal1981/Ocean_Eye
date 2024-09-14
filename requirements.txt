@@ -3,4 +3,4 @@ psycopg2-binary
 matplotlib
 pandas
 numpy
-openai
+openai == 0.28
