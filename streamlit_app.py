@@ -16,19 +16,22 @@ openai.api_key = get_api_key()
 
 def get_gpt_response(prompt):
     try:
-        response = openai.Completion.create(
-            engine="text-davinci-002",
-            prompt=prompt,
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are an AI assistant specialized in vessel performance."},
+                {"role": "user", "content": prompt}
+            ],
             max_tokens=150,
             n=1,
             stop=None,
             temperature=0.5,
         )
-        return response.choices[0].text.strip()
+        return response.choices[0].message['content'].strip()
     except Exception as e:
         st.error(f"Error in GPT response: {str(e)}")
         return "I'm sorry, I encountered an error while processing your request."
-
+        
 def handle_user_query(user_input: str) -> str:
     intent, vessel_name = process_user_input(user_input)
     
@@ -41,12 +44,13 @@ def handle_user_query(user_input: str) -> str:
             return f"Sorry, I couldn't find hull performance data for {vessel_name}."
     elif intent in ["fuel_efficiency", "speed_performance", "general_info"]:
         # For now, we'll use GPT to handle these intents
-        gpt_prompt = f"User asked about {intent} for vessel {vessel_name}. Provide a brief, informative response about {intent} in the context of maritime vessels."
+        gpt_prompt = f"Provide a brief, informative response about {intent} for the vessel {vessel_name} in the context of maritime vessel performance."
         return get_gpt_response(gpt_prompt)
     else:
         # For unknown intents, we'll use GPT to generate a response
-        gpt_prompt = f"User: {user_input}\nAssistant: As an AI specialized in vessel performance, "
+        gpt_prompt = f"The user asked: '{user_input}'. Provide a helpful response related to vessel performance."
         return get_gpt_response(gpt_prompt)
+
 
 def main():
     st.title("Vessel Performance Chatbot")
