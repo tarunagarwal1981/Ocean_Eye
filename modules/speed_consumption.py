@@ -3,124 +3,69 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-import psycopg2
-import streamlit as st
 from datetime import datetime, timedelta
-import matplotlib.cm as cm
-import matplotlib.colors as mcolors
+from utils.database_utils import fetch_data_from_db
 
-# Function to fetch data from Koyeb PostgreSQL
+# Fetch the speed consumption data from the database
 def fetch_speed_consumption_data(vessel_name):
-    # Koyeb PostgreSQL connection details
-    koyeb_host = "ep-rapid-wind-a1jdywyi.ap-southeast-1.pg.koyeb.app"
-    koyeb_database = "koyebdb"
-    koyeb_user = "koyeb-adm"
-    koyeb_password = "YBK7jd6wLaRD"
-    koyeb_port = "5432"
-    
-    # Establish connection to the database
-    conn = psycopg2.connect(
-        host=koyeb_host,
-        database=koyeb_database,
-        user=koyeb_user,
-        password=koyeb_password,
-        port=koyeb_port
-    )
-    
-    # Define the query to fetch speed and consumption data for the specified vessel
     query = f"""
     SELECT vessel_name, report_date, speed, normalised_consumption, loading_condition
     FROM hull_performance
     WHERE UPPER(vessel_name) = '{vessel_name.upper()}'
     """
-    
-    # Fetch data
-    data = pd.read_sql(query, conn)
-    
-    # Close the connection
-    conn.close()
-    
-    return data
+    return fetch_data_from_db(query)
 
-# Function to generate a gradient color based on dates
-def get_color_gradient(dates):
-    norm = mcolors.Normalize(vmin=dates.min(), vmax=dates.max())
-    cmap = cm.get_cmap('plasma')  # You can try 'viridis', 'plasma', 'magma', etc. for neon-like color schemes
-    return cmap(norm(dates))
-
-# Function to generate speed consumption chart with time-based color gradient
-def plot_speed_consumption(vessel_name):
-    # Fetch data from Koyeb PostgreSQL
-    data = fetch_speed_consumption_data(vessel_name)
-    
-    # Check if there's data for the vessel
+# Plot speed vs. normalised consumption for Laden and Ballast conditions
+def plot_speed_consumption(vessel_name, data):
     if data.empty:
-        st.error(f"No data available for vessel '{vessel_name}'")
-        return
+        return None
     
-    # Convert report_date to datetime format and filter the last 6 months
     data['report_date'] = pd.to_datetime(data['report_date'], errors='coerce')
     today = datetime.today().date()
     six_months_ago = today - timedelta(days=180)
     
-    # Filter for data from the last 6 months
-    filtered_data = data[(data['report_date'].dt.date >= six_months_ago) & (data['normalised_consumption'].notnull()) & (data['speed'].notnull())]
-
-    if filtered_data.empty:
-        st.error(f"No data available for vessel '{vessel_name}' in the last 6 months.")
-        return
+    # Filter the data for the last 6 months
+    filtered_data = data[(data['report_date'].dt.date >= six_months_ago)]
     
-    # Filter data by loading condition: Laden and Ballast
+    if filtered_data.empty:
+        return None
+    
+    # Separate data by loading condition (laden and ballast)
     laden_data = filtered_data[filtered_data['loading_condition'].str.lower() == 'laden']
     ballast_data = filtered_data[filtered_data['loading_condition'].str.lower() == 'ballast']
-
-    fig, ax = plt.subplots(figsize=(10, 6))
-
-    # Plot Laden condition data with gradient color based on report_date
-    if not laden_data.empty:
-        color_laden = get_color_gradient(laden_data['report_date'].values)
-        ax.scatter(laden_data['speed'], laden_data['normalised_consumption'], c=color_laden, label='Laden', alpha=0.8, edgecolors='white')
-
-    # Plot Ballast condition data with gradient color based on report_date
-    if not ballast_data.empty:
-        color_ballast = get_color_gradient(ballast_data['report_date'].values)
-        ax.scatter(ballast_data['speed'], ballast_data['normalised_consumption'], c=color_ballast, label='Ballast', alpha=0.8, edgecolors='white')
-
-    # Set chart title and labels
-    ax.set_title(f"Speed vs ME Consumption - {vessel_name} (Last 6 months)", fontsize=14, color='white')
-    ax.set_xlabel('Speed (knots)', fontsize=12, color='white')
-    ax.set_ylabel('ME Consumption (mT/d)', fontsize=12, color='white')
-
-    # Set background color and grid
-    ax.set_facecolor('#000C20')
-    fig.patch.set_facecolor('#000C20')
     
-    # Adjust tick parameters and add legend
-    ax.tick_params(axis='x', colors='white')
-    ax.tick_params(axis='y', colors='white')
-    ax.legend(loc='upper left', fontsize=10)
-
-    # Dynamically adjust axis limits using max() and min()
-    ax.set_xlim(filtered_data['speed'].min() - 1, filtered_data['speed'].max() + 1)
-    ax.set_ylim(filtered_data['normalised_consumption'].min() - 0.05 * filtered_data['normalised_consumption'].ptp(), 
-                filtered_data['normalised_consumption'].max() + 0.05 * filtered_data['normalised_consumption'].ptp())
-
-    # Return the figure for display in Streamlit
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+    
+    # Laden Condition
+    if not laden_data.empty:
+        laden_dates = pd.to_datetime(laden_data['report_date'])
+        x_laden = laden_data['speed']
+        y_laden = laden_data['normalised_consumption']
+        scatter_laden = ax1.scatter(x_laden, y_laden, c=(laden_dates - laden_dates.min()).dt.days, cmap='plasma', s=50, alpha=0.8)
+        ax1.set_title('Laden Condition')
+        ax1.set_xlabel('Speed (knots)')
+        ax1.set_ylabel('ME Consumption (mT/d)')
+        plt.colorbar(scatter_laden, ax=ax1, label="Time Progression")
+    
+    # Ballast Condition
+    if not ballast_data.empty:
+        ballast_dates = pd.to_datetime(ballast_data['report_date'])
+        x_ballast = ballast_data['speed']
+        y_ballast = ballast_data['normalised_consumption']
+        scatter_ballast = ax2.scatter(x_ballast, y_ballast, c=(ballast_dates - ballast_dates.min()).dt.days, cmap='plasma', s=50, alpha=0.8)
+        ax2.set_title('Ballast Condition')
+        ax2.set_xlabel('Speed (knots)')
+        plt.colorbar(scatter_ballast, ax=ax2, label="Time Progression")
+    
+    plt.tight_layout()
     return fig
 
-# Streamlit App UI
-
-# Title of the Streamlit App
-st.title("Speed vs ME Consumption Analysis")
-
-# User input for vessel name
-vessel_name = st.text_input("Enter the vessel name:")
-
-# Button to trigger the chart generation
-if st.button("Generate Chart"):
-    if vessel_name:
-        chart = plot_speed_consumption(vessel_name)
-        if chart:
-            st.pyplot(chart)
-    else:
-        st.error("Please enter a vessel name.")
+# Analyze speed consumption for the vessel
+def analyze_speed_consumption(vessel_name):
+    # Fetch data
+    speed_data = fetch_speed_consumption_data(vessel_name)
+    
+    # Plot speed consumption
+    chart = plot_speed_consumption(vessel_name, speed_data)
+    
+    return chart
