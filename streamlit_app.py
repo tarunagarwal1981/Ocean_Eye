@@ -33,49 +33,17 @@ def get_gpt_response(prompt):
         st.error(f"Error in GPT response: {str(e)}")
         return "I'm sorry, I encountered an error while processing your request."
 
-# Process and return hull performance analysis
-def process_hull_performance(vessel_name: str) -> str:
-    chart, power_loss, hull_condition = analyze_hull_performance(vessel_name)
-    if chart and power_loss is not None and hull_condition:
-        st.pyplot(chart)
-        return f"Here's the hull performance analysis for {vessel_name}. The excess power is {power_loss:.2f}% and the hull condition is {hull_condition}."
-    else:
-        return f"Sorry, I couldn't find specific hull performance data for vessel '{vessel_name}'."
-
-# Process and return speed consumption analysis
-def process_speed_consumption(vessel_name: str) -> str:
-    chart = analyze_speed_consumption(vessel_name)
-    if chart:
-        st.pyplot(chart)
-        return f"Here's the speed consumption profile for {vessel_name}."
-    else:
-        return f"Sorry, I couldn't find specific speed consumption data for vessel '{vessel_name}'."
-
-# Handle user query
 def handle_user_query(user_input: str) -> str:
     intent, vessel_present = process_user_input(user_input)
 
-    # Handle hull performance and speed consumption together
-    if intent == "hull_performance_and_speed_consumption":
-        if vessel_present:
-            vessel_name = extract_vessel_name(user_input)
-            hull_response = process_hull_performance(vessel_name)
-            speed_response = process_speed_consumption(vessel_name)
-            return f"{hull_response}\n\n{speed_response}"
-        else:
-            generic_response = get_gpt_response("Provide general information about vessel performance, including hull and speed consumption.")
-            return f"{generic_response}\n\nTo provide specific data, I need a vessel name. Could you please provide one?"
-
-    # Handle hull performance only
-    elif intent == "hull_performance":
+    if intent == "hull_performance":
         if vessel_present:
             vessel_name = extract_vessel_name(user_input)
             return process_hull_performance(vessel_name)
         else:
             generic_response = get_gpt_response("Provide general information about hull performance in maritime vessels.")
             return f"{generic_response}\n\nTo provide specific hull performance data, I need a vessel name. Could you please provide one?"
-
-    # Handle speed consumption only
+    
     elif intent == "speed_consumption":
         if vessel_present:
             vessel_name = extract_vessel_name(user_input)
@@ -84,11 +52,56 @@ def handle_user_query(user_input: str) -> str:
             generic_response = get_gpt_response("Provide general information about speed consumption in maritime vessels.")
             return f"{generic_response}\n\nTo provide specific speed consumption data, I need a vessel name. Could you please provide one?"
 
-    # Default response for general info or unrecognized intent
+    elif intent == "vessel_performance":  # Both hull and speed consumption requested
+        if vessel_present:
+            vessel_name = extract_vessel_name(user_input)
+            return process_combined_performance(vessel_name)
+        else:
+            generic_response = get_gpt_response("Provide general information about vessel performance (hull performance and speed consumption).")
+            return f"{generic_response}\n\nTo provide specific vessel performance data, I need a vessel name. Could you please provide one?"
+    
+    elif intent in ["fuel_efficiency", "general_info"]:
+        return get_gpt_response(f"Provide information about {intent} in the context of maritime vessels.")
+    
     else:
         return get_gpt_response(f"The user asked: '{user_input}'. Provide a helpful response related to vessel performance.")
 
-# Main Streamlit app
+def process_hull_performance(vessel_name: str) -> str:
+    chart, power_loss, hull_condition = analyze_hull_performance(vessel_name)
+    if chart and power_loss is not None and hull_condition:
+        st.pyplot(chart)
+        return f"Here's the hull performance analysis for {vessel_name}. The excess power is {power_loss:.2f}% and the hull condition is {hull_condition}."
+    else:
+        return f"Sorry, I couldn't find specific hull performance data for {vessel_name}."
+
+def process_speed_consumption(vessel_name: str) -> str:
+    chart = analyze_speed_consumption(vessel_name)
+    if chart:
+        st.pyplot(chart)
+        return f"Here's the speed consumption profile for {vessel_name}."
+    else:
+        return f"Sorry, I couldn't find specific speed consumption data for {vessel_name}."
+
+def process_combined_performance(vessel_name: str) -> str:
+    # Hull Performance
+    hull_chart, power_loss, hull_condition = analyze_hull_performance(vessel_name)
+    # Speed Consumption Performance
+    speed_chart = analyze_speed_consumption(vessel_name)
+
+    if hull_chart:
+        st.pyplot(hull_chart)
+        st.write(f"Excess Power: {power_loss:.2f}% | Hull Condition: {hull_condition}")
+    else:
+        st.write(f"Sorry, I couldn't find specific hull performance data for {vessel_name}.")
+
+    if speed_chart:
+        st.pyplot(speed_chart)
+        st.write("This is the speed consumption profile.")
+    else:
+        st.write(f"Sorry, I couldn't find specific speed consumption data for {vessel_name}.")
+
+    return f"Combined performance analysis for {vessel_name}."
+
 def main():
     st.title("Vessel Performance Chatbot")
 
@@ -113,7 +126,8 @@ def main():
         # Process user input
         if st.session_state.awaiting_vessel_name:
             # If we're waiting for the vessel name, process it directly
-            response = process_hull_performance(prompt)
+            vessel_name = extract_vessel_name(prompt)
+            response = process_hull_performance(vessel_name)
             st.session_state.awaiting_vessel_name = False
         else:
             response = handle_user_query(prompt)
