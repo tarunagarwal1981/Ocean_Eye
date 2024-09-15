@@ -1,45 +1,48 @@
 import re
-from typing import Tuple, Optional
 
-INTENT_KEYWORDS = {
-    "hull_performance": ["hull", "performance", "roughness", "power loss"],
-    "fuel_efficiency": ["fuel", "efficiency", "consumption", "usage"],
-    "speed_performance": ["speed", "velocity", "knots"],
-    "general_info": ["info", "information", "details", "specs", "specifications"]
-}
+# Define vessel name patterns (can be expanded as needed)
+VESSEL_NAME_PATTERN = r"\b(?:vessel\s+)?([A-Za-z0-9\s]+)\b"
 
-def recognize_intent(user_input: str) -> str:
+def process_user_input(user_input: str):
+    """
+    Process user input to determine the intent (hull performance, speed consumption, etc.)
+    and whether a vessel name is present.
+    
+    Args:
+        user_input (str): The input query from the user.
+    
+    Returns:
+        tuple: (intent, vessel_present)
+    """
     user_input = user_input.lower()
-    for intent, keywords in INTENT_KEYWORDS.items():
-        if any(keyword in user_input for keyword in keywords):
-            return intent
-    return "unknown"
 
-def extract_vessel_name(user_input: str) -> Optional[str]:
-    patterns = [
-        r"(?:of|for)\s+the\s+(\w+(?:\s+\w+)?)",
-        r"(\w+(?:\s+\w+)?)'s",
-        r"vessel\s+(?:name\s+is\s+)?(\w+(?:\s+\w+)?)",
-        r"ship\s+(?:name\s+is\s+)?(\w+(?:\s+\w+)?)"
-    ]
+    # Check for hull performance intent
+    if "hull performance" in user_input or "hull condition" in user_input:
+        return "hull_performance", True if extract_vessel_name(user_input) else False
+
+    # Check for speed consumption intent
+    elif "speed consumption" in user_input or "consumption profile" in user_input:
+        return "speed_consumption", True if extract_vessel_name(user_input) else False
+
+    # Check for combined vessel performance intent (hull + speed)
+    elif "vessel performance" in user_input or "overall performance" in user_input:
+        return "vessel_performance", True if extract_vessel_name(user_input) else False
+
+    # Add more intents as needed
+    else:
+        return "general_info", False
+
+def extract_vessel_name(user_input: str):
+    """
+    Extract vessel name from user input using regex patterns.
     
-    for pattern in patterns:
-        match = re.search(pattern, user_input, re.IGNORECASE)
-        if match:
-            return match.group(1)
+    Args:
+        user_input (str): The input query from the user.
     
-    words = user_input.split()
-    capitalized_words = [word for word in words if word.istitle()]
-    
-    if capitalized_words:
-        return ' '.join(capitalized_words)
-    
+    Returns:
+        str: The extracted vessel name (if found).
+    """
+    match = re.search(VESSEL_NAME_PATTERN, user_input, re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
     return None
-
-def has_vessel_name(user_input: str) -> bool:
-    return extract_vessel_name(user_input) is not None
-
-def process_user_input(user_input: str) -> Tuple[str, bool]:
-    intent = recognize_intent(user_input)
-    vessel_present = has_vessel_name(user_input)
-    return intent, vessel_present
