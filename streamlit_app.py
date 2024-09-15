@@ -3,7 +3,9 @@ import openai
 from utils.nlp_utils import process_user_input, extract_vessel_name
 from modules.hull_performance import analyze_hull_performance
 from modules.speed_consumption import analyze_speed_consumption
+import os
 
+# Function to retrieve OpenAI API key
 def get_api_key():
     """Retrieve the API key from Streamlit secrets or environment variables."""
     if 'openai' in st.secrets:
@@ -15,6 +17,7 @@ def get_api_key():
 
 openai.api_key = get_api_key()
 
+# Function to get GPT-3 response
 def get_gpt_response(prompt):
     try:
         response = openai.ChatCompletion.create(
@@ -33,39 +36,49 @@ def get_gpt_response(prompt):
         st.error(f"Error in GPT response: {str(e)}")
         return "I'm sorry, I encountered an error while processing your request."
 
+# Function to handle user queries based on intent
 def handle_user_query(user_input: str) -> str:
     intent, vessel_present = process_user_input(user_input)
 
+    # Hull Performance Intent
     if intent == "hull_performance":
         if vessel_present:
             vessel_name = extract_vessel_name(user_input)
             return process_hull_performance(vessel_name)
         else:
+            # General Hull Performance Information
             generic_response = get_gpt_response("Provide general information about hull performance in maritime vessels.")
             return f"{generic_response}\n\nTo provide specific hull performance data, I need a vessel name. Could you please provide one?"
-    
+
+    # Speed Consumption Intent
     elif intent == "speed_consumption":
         if vessel_present:
             vessel_name = extract_vessel_name(user_input)
             return process_speed_consumption(vessel_name)
         else:
+            # General Speed Consumption Information
             generic_response = get_gpt_response("Provide general information about speed consumption in maritime vessels.")
             return f"{generic_response}\n\nTo provide specific speed consumption data, I need a vessel name. Could you please provide one?"
 
-    elif intent == "vessel_performance":  # Both hull and speed consumption requested
+    # Combined Vessel Performance Intent (Hull + Speed)
+    elif intent == "vessel_performance":  
         if vessel_present:
             vessel_name = extract_vessel_name(user_input)
             return process_combined_performance(vessel_name)
         else:
+            # General Vessel Performance Information
             generic_response = get_gpt_response("Provide general information about vessel performance (hull performance and speed consumption).")
             return f"{generic_response}\n\nTo provide specific vessel performance data, I need a vessel name. Could you please provide one?"
     
+    # Other Intents (Fuel Efficiency, General Info, etc.)
     elif intent in ["fuel_efficiency", "general_info"]:
         return get_gpt_response(f"Provide information about {intent} in the context of maritime vessels.")
     
+    # Default Fallback for Other Queries
     else:
         return get_gpt_response(f"The user asked: '{user_input}'. Provide a helpful response related to vessel performance.")
 
+# Function to process hull performance for a vessel
 def process_hull_performance(vessel_name: str) -> str:
     chart, power_loss, hull_condition = analyze_hull_performance(vessel_name)
     if chart and power_loss is not None and hull_condition:
@@ -74,6 +87,7 @@ def process_hull_performance(vessel_name: str) -> str:
     else:
         return f"Sorry, I couldn't find specific hull performance data for {vessel_name}."
 
+# Function to process speed consumption for a vessel
 def process_speed_consumption(vessel_name: str) -> str:
     chart = analyze_speed_consumption(vessel_name)
     if chart:
@@ -82,18 +96,21 @@ def process_speed_consumption(vessel_name: str) -> str:
     else:
         return f"Sorry, I couldn't find specific speed consumption data for {vessel_name}."
 
+# Function to process combined hull and speed performance for a vessel
 def process_combined_performance(vessel_name: str) -> str:
     # Hull Performance
     hull_chart, power_loss, hull_condition = analyze_hull_performance(vessel_name)
     # Speed Consumption Performance
     speed_chart = analyze_speed_consumption(vessel_name)
 
+    # Display Hull Performance
     if hull_chart:
         st.pyplot(hull_chart)
         st.write(f"Excess Power: {power_loss:.2f}% | Hull Condition: {hull_condition}")
     else:
         st.write(f"Sorry, I couldn't find specific hull performance data for {vessel_name}.")
 
+    # Display Speed Consumption Performance
     if speed_chart:
         st.pyplot(speed_chart)
         st.write("This is the speed consumption profile.")
@@ -102,6 +119,7 @@ def process_combined_performance(vessel_name: str) -> str:
 
     return f"Combined performance analysis for {vessel_name}."
 
+# Main function for Streamlit Chatbot UI
 def main():
     st.title("Vessel Performance Chatbot")
 
@@ -126,10 +144,10 @@ def main():
         # Process user input
         if st.session_state.awaiting_vessel_name:
             # If we're waiting for the vessel name, process it directly
-            vessel_name = extract_vessel_name(prompt)
-            response = process_hull_performance(vessel_name)
+            response = process_hull_performance(prompt)
             st.session_state.awaiting_vessel_name = False
         else:
+            # Handle other queries
             response = handle_user_query(prompt)
             if "Could you please provide one?" in response:
                 # Set the state to awaiting vessel name
@@ -139,6 +157,7 @@ def main():
         st.session_state.messages.append({"role": "assistant", "content": response})
         with st.chat_message("assistant"):
             st.markdown(response)
+
 
 if __name__ == "__main__":
     main()
