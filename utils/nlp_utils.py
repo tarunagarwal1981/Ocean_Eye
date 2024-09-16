@@ -25,6 +25,7 @@ def process_user_input(user_input: str) -> (str, bool):
         "hull_performance": ["hull", "performance", "power loss", "roughness"],
         "speed_consumption": ["speed", "consumption", "fuel", "efficiency"],
         "hull_performance_and_speed_consumption": ["overall", "combined", "both"]
+        "vessel_performance": ["vessel performance", "overall performance", "combined performance"]
     }
     
     # Check for multiple intents
