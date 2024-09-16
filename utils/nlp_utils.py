@@ -24,7 +24,7 @@ def process_user_input(user_input: str) -> (str, bool):
     intent_keywords = {
         "hull_performance": ["hull", "performance", "power loss", "roughness"],
         "speed_consumption": ["speed", "consumption", "fuel", "efficiency"],
-        "hull_performance_and_speed_consumption": ["overall", "combined", "both"]
+        #"hull_performance_and_speed_consumption": ["overall", "combined", "both"]
         "vessel_performance": ["vessel performance", "overall performance", "combined performance"]
     }
     
