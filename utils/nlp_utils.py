@@ -1,7 +1,6 @@
 import re
 
 def extract_vessel_name(user_input: str) -> str:
-    # More comprehensive regex to extract vessel name
     patterns = [
         r"(?:vessel|ship|boat)\s+([\w\s-]+)",  # Matches "vessel Name"
         r"(?:of|for)\s+([\w\s-]+)",           # Matches "of Name" or "for Name"
@@ -12,9 +11,10 @@ def extract_vessel_name(user_input: str) -> str:
     for pattern in patterns:
         match = re.search(pattern, user_input, re.IGNORECASE)
         if match:
-            return match.group(1).strip()
+            # Remove words like 'performance', 'consumption', etc. from the vessel name
+            vessel_name = match.group(1).strip()
+            return ' '.join(word for word in vessel_name.split() if word.lower() not in ['vessel', 'performance', 'consumption', 'hull', 'speed', 'of', 'for'])
     
-    # If no match found, return None
     return None
 
 def process_user_input(user_input: str) -> (str, bool):
