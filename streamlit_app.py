@@ -47,6 +47,8 @@ def handle_user_query(user_input: str) -> str:
         return process_speed_consumption(cleaned_vessel_name)
     elif intent == "hull_performance_and_speed_consumption":
         return process_combined_performance(cleaned_vessel_name)
+    elif intent == "vessel_performance":
+        return process_combined_performance(cleaned_vessel_name)    
     else:
         return get_gpt_response(f"The user asked about {intent} for the vessel {cleaned_vessel_name}. Provide a helpful response related to vessel performance.")
 
