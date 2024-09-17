@@ -70,10 +70,10 @@ You are an AI assistant specialized in vessel performance analysis. Your task is
 4. General vessel information
 
 Based on the user's query, output your decision as a JSON object with the following structure:
-{
+{{
     "decision": "hull_performance" or "speed_consumption" or "combined_performance" or "general_info",
     "explanation": "Brief explanation of why you made this decision"
-}
+}}
 
 User Query: {query}
 
@@ -84,15 +84,30 @@ ANALYSIS_PROMPT = FEW_SHOT_EXAMPLES
 
 def get_llm_decision(query: str) -> Dict[str, str]:
     """Get the LLM's decision on what type of information is needed."""
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": "You are a vessel performance analysis expert."},
-            {"role": "user", "content": DECISION_PROMPT.format(query=query)}
-        ],
-        temperature=0.3,
-    )
-    return json.loads(response.choices[0].message['content'])
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a vessel performance analysis expert."},
+                {"role": "user", "content": DECISION_PROMPT.format(query=query)}
+            ],
+            temperature=0.3,
+        )
+        decision_text = response.choices[0].message['content'].strip()
+        return json.loads(decision_text)
+    except json.JSONDecodeError:
+        # Fallback in case the LLM doesn't return valid JSON
+        return {
+            "decision": "general_info",
+            "explanation": "Failed to parse LLM response, defaulting to general info."
+        }
+    except Exception as e:
+        st.error(f"Error in LLM decision: {str(e)}")
+        return {
+            "decision": "general_info",
+            "explanation": "An error occurred, defaulting to general info."
+        }
+
 
 def get_llm_analysis(query: str, vessel_name: str, data_summary: str) -> str:
     """Get the LLM's analysis based on the query and available data."""
