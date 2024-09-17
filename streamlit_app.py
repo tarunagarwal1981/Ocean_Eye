@@ -337,15 +337,27 @@ def handle_user_query(query: str) -> Tuple[str, str, str]:
     return analysis, llm_decision['decision'], vessel_name
 
 def display_charts(decision: str, vessel_name: str):
-    if decision in ["hull_performance", "combined_performance"]:
-        chart, _, _ = analyze_hull_performance(vessel_name)
-        if chart:
-            st.pyplot(chart)
     if decision in ["speed_consumption", "combined_performance"]:
-        speed_chart = analyze_speed_consumption(vessel_name)
-        if speed_chart:
-            st.pyplot(speed_chart)
-
+        try:
+            speed_chart, _ = analyze_speed_consumption(vessel_name)
+            if speed_chart is not None and hasattr(speed_chart, 'savefig'):
+                st.pyplot(speed_chart)
+            else:
+                st.warning("Speed consumption chart is not available for this vessel.")
+        except Exception as e:
+            st.error(f"An error occurred while generating the speed consumption chart: {str(e)}")
+            print(f"Error in display_charts: {str(e)}")  # For debugging
+    
+    if decision in ["hull_performance", "combined_performance"]:
+        try:
+            hull_chart, _, _ = analyze_hull_performance(vessel_name)
+            if hull_chart is not None and hasattr(hull_chart, 'savefig'):
+                st.pyplot(hull_chart)
+            else:
+                st.warning("Hull performance chart is not available for this vessel.")
+        except Exception as e:
+            st.error(f"An error occurred while generating the hull performance chart: {str(e)}")
+            print(f"Error in display_charts: {str(e)}")  # For debugging
 def main():
     st.title("Advanced Vessel Performance Chatbot")
 
