@@ -4,3 +4,4 @@ matplotlib
 pandas
 numpy
 openai == 0.28
+scipy
