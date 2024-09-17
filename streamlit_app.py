@@ -11,6 +11,7 @@ from utils.database_utils import fetch_data_from_db
 from utils.nlp_utils import extract_vessel_name, clean_vessel_name
 from scipy.optimize import curve_fit
 
+
 # Initialize OpenAI API
 def get_api_key():
     if 'openai' in st.secrets:
@@ -120,7 +121,7 @@ def fetch_speed_consumption_data(vessel_name):
 
 def plot_speed_consumption(vessel_name, data):
     if data.empty:
-        logging.warning("Input data is empty.")
+        print("Warning: Input data is empty.")
         return None
     
     data['report_date'] = pd.to_datetime(data['report_date'], errors='coerce')
@@ -130,7 +131,7 @@ def plot_speed_consumption(vessel_name, data):
     filtered_data = data[(data['report_date'].dt.date >= six_months_ago)]
     
     if filtered_data.empty:
-        logging.warning("Filtered data is empty.")
+        print("Warning: Filtered data is empty.")
         return None
     
     laden_data = filtered_data[filtered_data['loading_condition'].str.lower() == 'laden']
@@ -150,10 +151,10 @@ def plot_speed_consumption(vessel_name, data):
             scatter = ax.scatter(x, y, c=(dates - dates.min()).dt.days, cmap='viridis', s=50, alpha=0.8)
             
             try:
-                logging.info(f"Attempting to fit 2nd order exponential curve for {title}")
-                logging.info(f"Data shape: x={x.shape}, y={y.shape}")
-                logging.info(f"x range: {x.min()} to {x.max()}")
-                logging.info(f"y range: {y.min()} to {y.max()}")
+                print(f"Attempting to fit 2nd order exponential curve for {title}")
+                print(f"Data shape: x={x.shape}, y={y.shape}")
+                print(f"x range: {x.min()} to {x.max()}")
+                print(f"y range: {y.min()} to {y.max()}")
                 
                 # Fit 2nd order exponential curve
                 popt, pcov = curve_fit(exp_func_2nd_order, x, y, p0=[1, 0.1, 1, 0.1, 1], maxfev=10000)
@@ -164,21 +165,21 @@ def plot_speed_consumption(vessel_name, data):
                 
                 # Plot 2nd order exponential best fit curve
                 ax.plot(x_smooth, y_smooth, 'r-', label='2nd Order Exponential Fit')
-                logging.info(f"Successfully plotted 2nd order exponential fit for {title}")
+                print(f"Successfully plotted 2nd order exponential fit for {title}")
             except RuntimeError as e:
-                logging.error(f"Error fitting 2nd order exponential curve for {title}: {str(e)}")
-                logging.info("Falling back to polynomial fit")
+                print(f"Error fitting 2nd order exponential curve for {title}: {str(e)}")
+                print("Falling back to polynomial fit")
                 try:
                     # Fallback to polynomial fit
                     z = np.polyfit(x, y, 3)
                     p = np.poly1d(z)
                     x_smooth = np.linspace(x.min(), x.max(), 100)
                     ax.plot(x_smooth, p(x_smooth), 'g-', label='Polynomial Fit (Fallback)')
-                    logging.info(f"Successfully plotted polynomial fit for {title}")
+                    print(f"Successfully plotted polynomial fit for {title}")
                 except Exception as poly_e:
-                    logging.error(f"Error fitting polynomial curve: {str(poly_e)}")
+                    print(f"Error fitting polynomial curve: {str(poly_e)}")
             except Exception as e:
-                logging.error(f"Unexpected error in curve fitting for {title}: {str(e)}")
+                print(f"Unexpected error in curve fitting for {title}: {str(e)}")
             
             ax.legend(fontsize=8)
             ax.set_title(title)
@@ -190,6 +191,7 @@ def plot_speed_consumption(vessel_name, data):
     fig.suptitle(f"Speed vs Consumption - {vessel_name}", fontsize=16)
     plt.subplots_adjust(top=0.93)
     return fig
+    
 def analyze_speed_consumption(vessel_name):
     speed_data = fetch_speed_consumption_data(vessel_name)
     chart = plot_speed_consumption(vessel_name, speed_data)
