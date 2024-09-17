@@ -147,20 +147,30 @@ def plot_speed_consumption(vessel_name, data):
             
             scatter = ax.scatter(x, y, c=(dates - dates.min()).dt.days, cmap='plasma', s=50, alpha=0.8)
             
-            # Fit exponential curve
-            popt, _ = curve_fit(exp_func, x, y, p0=[1, 0.1, 1])
-            
-            # Generate points for smooth curve
-            x_smooth = np.linspace(x.min(), x.max(), 100)
-            y_smooth = exp_func(x_smooth, *popt)
-            
-            # Plot exponential best fit curve
-            ax.plot(x_smooth, y_smooth, 'r-', label='Exponential Fit')
+            try:
+                # Fit exponential curve
+                popt, _ = curve_fit(exp_func, x, y, p0=[1, 0.1, 1], maxfev=10000)
+                
+                # Generate points for smooth curve
+                x_smooth = np.linspace(x.min(), x.max(), 100)
+                y_smooth = exp_func(x_smooth, *popt)
+                
+                # Plot exponential best fit curve
+                ax.plot(x_smooth, y_smooth, 'r-', label='Exponential Fit')
+                ax.legend()
+            except RuntimeError:
+                print(f"Couldn't fit exponential curve for {title}. Falling back to polynomial fit.")
+                # Fallback to polynomial fit
+                z = np.polyfit(x, y, 3)
+                p = np.poly1d(z)
+                ax.plot(x_smooth, p(x_smooth), 'r-', label='Polynomial Fit')
+                ax.legend()
+            except Exception as e:
+                print(f"Error fitting curve for {title}: {str(e)}")
             
             ax.set_title(title)
             ax.set_xlabel('Speed (knots)')
             ax.set_ylabel('ME Consumption (mT/d)')
-            ax.legend()
             plt.colorbar(scatter, ax=ax, label="Time Progression")
     
     plt.tight_layout()
