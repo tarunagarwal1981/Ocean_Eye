@@ -228,6 +228,7 @@ def generate_data_summary(vessel_name: str, decision: str) -> str:
         summary += f"- Chart available: {'Yes' if hull_data['chart_available'] else 'No'}\n"
         summary += f"- Current excess power: {hull_data['power_loss']:.2f}% if hull_data['power_loss'] is not None else 'Not available'}\n"
         summary += f"- Current excess power: {hull_data['power_loss']:.2f}% if hull_data['power_loss'] is not None else 'Not available'}\n"
+        summary += f"- Current excess power: {f'{hull_data['power_loss']:.2f}%' if hull_data['power_loss'] is not None else 'Not available'}\n"
         summary += f"- Hull condition: {hull_data['hull_condition'] if hull_data['hull_condition'] is not None else 'Not available'}\n"
         summary += f"- Historical performance data available: {'Yes' if hull_data['performance_data_available'] else 'No'}\n"
         summary += f"- Six months summary data available: {'Yes' if hull_data['six_months_data_available'] else 'No'}\n"
