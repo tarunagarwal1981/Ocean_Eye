@@ -203,9 +203,16 @@ def plot_speed_consumption(vessel_name, data):
     return fig, stats
     
 def analyze_speed_consumption(vessel_name):
-    speed_data = fetch_speed_consumption_data(vessel_name)
-    chart, stats = plot_speed_consumption(vessel_name, speed_data)
-    return chart, stats
+    try:
+        speed_data = fetch_speed_consumption_data(vessel_name)
+        if speed_data.empty:
+            print(f"No speed consumption data available for {vessel_name}")
+            return None, {}
+        chart, stats = plot_speed_consumption(vessel_name, speed_data)
+        return chart, stats
+    except Exception as e:
+        print(f"Error in analyze_speed_consumption: {str(e)}")
+        return None, {}
 
 # LLM Prompts and Functions
 FEW_SHOT_EXAMPLES = """
