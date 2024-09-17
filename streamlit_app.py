@@ -9,6 +9,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, Tuple
 from utils.database_utils import fetch_data_from_db
 from utils.nlp_utils import extract_vessel_name, clean_vessel_name
+from scipy.optimize import curve_fit
 
 # Initialize OpenAI API
 def get_api_key():
@@ -135,24 +136,32 @@ def plot_speed_consumption(vessel_name, data):
     
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
     
-    if not laden_data.empty:
-        laden_dates = pd.to_datetime(laden_data['report_date'])
-        x_laden = laden_data['speed']
-        y_laden = laden_data['normalised_consumption']
-        scatter_laden = ax1.scatter(x_laden, y_laden, c=(laden_dates - laden_dates.min()).dt.days, cmap='plasma', s=50, alpha=0.8)
-        ax1.set_title('Laden Condition')
-        ax1.set_xlabel('Speed (knots)')
-        ax1.set_ylabel('ME Consumption (mT/d)')
-        plt.colorbar(scatter_laden, ax=ax1, label="Time Progression")
+    def exp_func(x, a, b, c):
+        return a * np.exp(b * x) + c
     
-    if not ballast_data.empty:
-        ballast_dates = pd.to_datetime(ballast_data['report_date'])
-        x_ballast = ballast_data['speed']
-        y_ballast = ballast_data['normalised_consumption']
-        scatter_ballast = ax2.scatter(x_ballast, y_ballast, c=(ballast_dates - ballast_dates.min()).dt.days, cmap='plasma', s=50, alpha=0.8)
-        ax2.set_title('Ballast Condition')
-        ax2.set_xlabel('Speed (knots)')
-        plt.colorbar(scatter_ballast, ax=ax2, label="Time Progression")
+    for ax, condition_data, title in [(ax1, laden_data, 'Laden Condition'), (ax2, ballast_data, 'Ballast Condition')]:
+        if not condition_data.empty:
+            dates = pd.to_datetime(condition_data['report_date'])
+            x = condition_data['speed']
+            y = condition_data['normalised_consumption']
+            
+            scatter = ax.scatter(x, y, c=(dates - dates.min()).dt.days, cmap='plasma', s=50, alpha=0.8)
+            
+            # Fit exponential curve
+            popt, _ = curve_fit(exp_func, x, y, p0=[1, 0.1, 1])
+            
+            # Generate points for smooth curve
+            x_smooth = np.linspace(x.min(), x.max(), 100)
+            y_smooth = exp_func(x_smooth, *popt)
+            
+            # Plot exponential best fit curve
+            ax.plot(x_smooth, y_smooth, 'r-', label='Exponential Fit')
+            
+            ax.set_title(title)
+            ax.set_xlabel('Speed (knots)')
+            ax.set_ylabel('ME Consumption (mT/d)')
+            ax.legend()
+            plt.colorbar(scatter, ax=ax, label="Time Progression")
     
     plt.tight_layout()
     return fig
