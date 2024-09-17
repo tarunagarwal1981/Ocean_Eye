@@ -2,11 +2,13 @@ import streamlit as st
 import openai
 import os
 import json
-from typing import Dict, Any
-from modules.hull_performance import analyze_hull_performance, fetch_performance_data, fetch_six_months_data
-from modules.speed_consumption import analyze_speed_consumption
+import pandas as pd
+from typing import Dict, Any, Tuple
+from datetime import datetime, timedelta
+from utils.database_utils import get_db_connection
 from utils.nlp_utils import extract_vessel_name, clean_vessel_name
 
+# Initialize OpenAI API
 def get_api_key():
     if 'openai' in st.secrets:
         return st.secrets['openai']['api_key']
@@ -80,8 +82,6 @@ User Query: {query}
 Decision:
 """
 
-ANALYSIS_PROMPT = FEW_SHOT_EXAMPLES
-
 def get_llm_decision(query: str) -> Dict[str, str]:
     """Get the LLM's decision on what type of information is needed."""
     try:
@@ -96,7 +96,6 @@ def get_llm_decision(query: str) -> Dict[str, str]:
         decision_text = response.choices[0].message['content'].strip()
         return json.loads(decision_text)
     except json.JSONDecodeError:
-        # Fallback in case the LLM doesn't return valid JSON
         return {
             "decision": "general_info",
             "explanation": "Failed to parse LLM response, defaulting to general info."
@@ -108,19 +107,84 @@ def get_llm_decision(query: str) -> Dict[str, str]:
             "explanation": "An error occurred, defaulting to general info."
         }
 
-
 def get_llm_analysis(query: str, vessel_name: str, data_summary: str) -> str:
     """Get the LLM's analysis based on the query and available data."""
     response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
         messages=[
             {"role": "system", "content": "You are a vessel performance analysis expert."},
-            {"role": "user", "content": ANALYSIS_PROMPT.format(
+            {"role": "user", "content": FEW_SHOT_EXAMPLES.format(
                 user_question=query, data_summary=data_summary)}
         ],
         temperature=0.5,
     )
     return response.choices[0].message['content']
+
+def fetch_six_months_data(vessel_name: str) -> pd.DataFrame:
+    """Fetch data from hull_performance_six_months table for a specific vessel."""
+    conn = get_db_connection()
+    try:
+        query = """
+        SELECT *
+        FROM hull_performance_six_months
+        WHERE vessel_name = %s
+        """
+        data = pd.read_sql(query, conn, params=(vessel_name,))
+    finally:
+        conn.close()
+    return data
+
+def fetch_performance_data(vessel_name: str) -> pd.DataFrame:
+    """Fetch performance data for a specific vessel."""
+    conn = get_db_connection()
+    try:
+        query = """
+        SELECT report_date, hull_roughness_power_loss
+        FROM hull_performance
+        WHERE vessel_name = %s
+        ORDER BY report_date DESC
+        LIMIT 180  -- Assuming we want the last 6 months of data
+        """
+        data = pd.read_sql(query, conn, params=(vessel_name,))
+    finally:
+        conn.close()
+    return data
+
+def analyze_hull_performance(vessel_name: str) -> Tuple[Any, float, str]:
+    """Analyze hull performance for a specific vessel."""
+    performance_data = fetch_performance_data(vessel_name)
+    
+    if performance_data.empty:
+        return None, None, "Unknown"
+    
+    # Generate chart (you'll need to implement this part)
+    chart = generate_hull_performance_chart(performance_data)
+    
+    # Calculate current power loss (using the most recent data point)
+    current_power_loss = performance_data['hull_roughness_power_loss'].iloc[0]
+    
+    # Determine hull condition
+    hull_condition = determine_hull_condition(current_power_loss)
+    
+    return chart, current_power_loss, hull_condition
+
+def determine_hull_condition(power_loss: float) -> str:
+    """Determine hull condition based on power loss."""
+    if power_loss is None:
+        return "Unknown"
+    elif power_loss < 5:
+        return "Excellent"
+    elif power_loss < 10:
+        return "Good"
+    elif power_loss < 15:
+        return "Fair"
+    else:
+        return "Poor"
+
+def generate_hull_performance_chart(performance_data: pd.DataFrame):
+    # Implement chart generation logic here
+    # For now, we'll return None as a placeholder
+    return None
 
 def fetch_hull_performance_data(vessel_name: str) -> Dict[str, Any]:
     """Fetch hull performance data and generate summary."""
@@ -128,20 +192,30 @@ def fetch_hull_performance_data(vessel_name: str) -> Dict[str, Any]:
     performance_data = fetch_performance_data(vessel_name)
     six_months_data = fetch_six_months_data(vessel_name)
     
+    forecasted_cleaning = None
+    six_months_data_available = False
+    if not six_months_data.empty:
+        six_months_data_available = True
+        if 'forecasted_hull_cleaning_date' in six_months_data.columns:
+            forecasted_cleaning = six_months_data['forecasted_hull_cleaning_date'].iloc[0]
+            if pd.isnull(forecasted_cleaning):
+                forecasted_cleaning = "Not available (insufficient data)"
+    
     return {
         "chart_available": chart is not None,
         "power_loss": power_loss,
         "hull_condition": hull_condition,
         "performance_data_available": not performance_data.empty,
-        "six_months_data_available": not six_months_data.empty,
-        "forecasted_cleaning": six_months_data['forecasted_hull_cleaning_date'].iloc[0] if not six_months_data.empty else None,
+        "six_months_data_available": six_months_data_available,
+        "forecasted_cleaning": forecasted_cleaning,
     }
 
 def fetch_speed_consumption_data(vessel_name: str) -> Dict[str, Any]:
     """Fetch speed consumption data and generate summary."""
-    chart = analyze_speed_consumption(vessel_name)
+    # Implement speed consumption data fetching logic here
+    # For now, we'll return a placeholder
     return {
-        "chart_available": chart is not None,
+        "chart_available": False,
     }
 
 def generate_data_summary(vessel_name: str, decision: str) -> str:
@@ -152,11 +226,13 @@ def generate_data_summary(vessel_name: str, decision: str) -> str:
         hull_data = fetch_hull_performance_data(vessel_name)
         summary += f"Hull Performance Data:\n"
         summary += f"- Chart available: {'Yes' if hull_data['chart_available'] else 'No'}\n"
-        summary += f"- Current excess power: {hull_data['power_loss']:.2f}%\n"
-        summary += f"- Hull condition: {hull_data['hull_condition']}\n"
+        summary += f"- Current excess power: {hull_data['power_loss']:.2f}% if hull_data['power_loss'] is not None else 'Not available'}\n"
+        summary += f"- Hull condition: {hull_data['hull_condition'] if hull_data['hull_condition'] is not None else 'Not available'}\n"
         summary += f"- Historical performance data available: {'Yes' if hull_data['performance_data_available'] else 'No'}\n"
         summary += f"- Six months summary data available: {'Yes' if hull_data['six_months_data_available'] else 'No'}\n"
         summary += f"- Forecasted hull cleaning: {hull_data['forecasted_cleaning'] if hull_data['forecasted_cleaning'] else 'Not available'}\n"
+        if hull_data['forecasted_cleaning'] == "Not available (insufficient data)":
+            summary += "  Note: Insufficient valid data points after the last event for accurate forecasting.\n"
     
     if decision in ["speed_consumption", "combined_performance"]:
         speed_data = fetch_speed_consumption_data(vessel_name)
@@ -165,11 +241,11 @@ def generate_data_summary(vessel_name: str, decision: str) -> str:
     
     return summary
 
-def handle_user_query(query: str) -> str:
+def handle_user_query(query: str) -> Tuple[str, str, str]:
     """Main function to handle user queries."""
     vessel_name = clean_vessel_name(extract_vessel_name(query))
     if not vessel_name:
-        return "I couldn't identify a vessel name in your query. Could you please provide a specific vessel name?"
+        return "I couldn't identify a vessel name in your query. Could you please provide a specific vessel name?", "general_info", None
 
     llm_decision = get_llm_decision(query)
     data_summary = generate_data_summary(vessel_name, llm_decision['decision'])
@@ -184,9 +260,8 @@ def display_charts(decision: str, vessel_name: str):
         if chart:
             st.pyplot(chart)
     if decision in ["speed_consumption", "combined_performance"]:
-        chart = analyze_speed_consumption(vessel_name)
-        if chart:
-            st.pyplot(chart)
+        # Implement speed consumption chart display here
+        pass
 
 def main():
     st.title("Advanced Vessel Performance Chatbot")
