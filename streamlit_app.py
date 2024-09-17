@@ -134,46 +134,42 @@ def plot_speed_consumption(vessel_name, data):
     laden_data = filtered_data[filtered_data['loading_condition'].str.lower() == 'laden']
     ballast_data = filtered_data[filtered_data['loading_condition'].str.lower() == 'ballast']
     
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
     
-    def exp_func(x, a, b, c):
-        return a * np.exp(b * x) + c
+    def exp_func_2nd_order(x, a, b, c, d, e):
+        return a * np.exp(b * x) + c * np.exp(d * x) + e
     
     for ax, condition_data, title in [(ax1, laden_data, 'Laden Condition'), (ax2, ballast_data, 'Ballast Condition')]:
         if not condition_data.empty:
             dates = pd.to_datetime(condition_data['report_date'])
-            x = condition_data['speed']
-            y = condition_data['normalised_consumption']
+            x = condition_data['speed'].values
+            y = condition_data['normalised_consumption'].values
             
-            scatter = ax.scatter(x, y, c=(dates - dates.min()).dt.days, cmap='plasma', s=50, alpha=0.8)
+            scatter = ax.scatter(x, y, c=(dates - dates.min()).dt.days, cmap='viridis', s=50, alpha=0.8)
             
             try:
-                # Fit exponential curve
-                popt, _ = curve_fit(exp_func, x, y, p0=[1, 0.1, 1], maxfev=10000)
+                # Fit 2nd order exponential curve
+                popt, _ = curve_fit(exp_func_2nd_order, x, y, p0=[1, 0.1, 1, 0.1, 1], maxfev=10000)
                 
                 # Generate points for smooth curve
                 x_smooth = np.linspace(x.min(), x.max(), 100)
-                y_smooth = exp_func(x_smooth, *popt)
+                y_smooth = exp_func_2nd_order(x_smooth, *popt)
                 
-                # Plot exponential best fit curve
-                ax.plot(x_smooth, y_smooth, 'r-', label='Exponential Fit')
-                ax.legend()
-            except RuntimeError:
-                print(f"Couldn't fit exponential curve for {title}. Falling back to polynomial fit.")
-                # Fallback to polynomial fit
-                z = np.polyfit(x, y, 3)
-                p = np.poly1d(z)
-                ax.plot(x_smooth, p(x_smooth), 'r-', label='Polynomial Fit')
-                ax.legend()
-            except Exception as e:
+                # Plot 2nd order exponential best fit curve
+                ax.plot(x_smooth, y_smooth, 'r-', label='2nd Order Exponential Fit')
+                ax.legend(fontsize=8)
+            except RuntimeError as e:
                 print(f"Error fitting curve for {title}: {str(e)}")
+                print("Falling back to scatter plot only.")
             
             ax.set_title(title)
             ax.set_xlabel('Speed (knots)')
             ax.set_ylabel('ME Consumption (mT/d)')
-            plt.colorbar(scatter, ax=ax, label="Time Progression")
+            plt.colorbar(scatter, ax=ax, label="Time Progression (days)")
     
     plt.tight_layout()
+    fig.suptitle(f"Speed vs Consumption - {vessel_name}", fontsize=16)
+    plt.subplots_adjust(top=0.93)
     return fig
 
 def analyze_speed_consumption(vessel_name):
