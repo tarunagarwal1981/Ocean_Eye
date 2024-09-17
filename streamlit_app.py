@@ -122,7 +122,7 @@ def fetch_speed_consumption_data(vessel_name):
 def plot_speed_consumption(vessel_name, data):
     if data.empty:
         print("Warning: Input data is empty.")
-        return None
+        return None, {}
     
     data['report_date'] = pd.to_datetime(data['report_date'], errors='coerce')
     today = datetime.today().date()
@@ -132,14 +132,23 @@ def plot_speed_consumption(vessel_name, data):
     
     if filtered_data.empty:
         print("Warning: Filtered data is empty.")
-        return None
+        return None, {}
     
     laden_data = filtered_data[filtered_data['loading_condition'].str.lower() == 'laden']
     ballast_data = filtered_data[filtered_data['loading_condition'].str.lower() == 'ballast']
     
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
     
-    for ax, condition_data, title in [(ax1, laden_data, 'Laden Condition'), (ax2, ballast_data, 'Ballast Condition')]:
+    stats = {
+        'laden': {},
+        'ballast': {},
+        'overall': {}
+    }
+    
+    for ax, condition_data, title, condition in [
+        (ax1, laden_data, 'Laden Condition', 'laden'),
+        (ax2, ballast_data, 'Ballast Condition', 'ballast')
+    ]:
         if not condition_data.empty:
             dates = pd.to_datetime(condition_data['report_date'])
             x = condition_data['speed'].values
@@ -148,7 +157,7 @@ def plot_speed_consumption(vessel_name, data):
             scatter = ax.scatter(x, y, c=(dates - dates.min()).dt.days, cmap='viridis', s=50, alpha=0.8)
             
             try:
-                # First-order polynomial fit (equivalent to linear fit)
+                # First-order polynomial fit
                 coeffs = np.polyfit(x, y, 1)
                 poly = np.poly1d(coeffs)
                 
@@ -162,9 +171,15 @@ def plot_speed_consumption(vessel_name, data):
                 # Plot polynomial fit
                 x_smooth = np.linspace(x.min(), x.max(), 100)
                 ax.plot(x_smooth, poly(x_smooth), 'r-', label=f'Polynomial Fit (R² = {r_squared:.3f})')
-                print(f"Successfully plotted first-order polynomial fit for {title}")
-                print(f"Coefficients: {coeffs}")
-                print(f"R²: {r_squared:.4f}")
+                
+                # Collect statistics
+                stats[condition] = {
+                    'speed_range': (x.min(), x.max()),
+                    'consumption_range': (y.min(), y.max()),
+                    'slope': coeffs[0],
+                    'r_squared': r_squared
+                }
+                
             except Exception as e:
                 print(f"Error fitting polynomial curve for {title}: {str(e)}")
             
@@ -174,15 +189,23 @@ def plot_speed_consumption(vessel_name, data):
             ax.set_ylabel('ME Consumption (mT/d)')
             plt.colorbar(scatter, ax=ax, label="Time Progression (days)")
     
+    # Overall statistics
+    all_speeds = np.concatenate([laden_data['speed'].values, ballast_data['speed'].values])
+    all_consumptions = np.concatenate([laden_data['normalised_consumption'].values, ballast_data['normalised_consumption'].values])
+    stats['overall'] = {
+        'speed_range': (all_speeds.min(), all_speeds.max()),
+        'consumption_range': (all_consumptions.min(), all_consumptions.max())
+    }
+    
     plt.tight_layout()
     fig.suptitle(f"Speed vs Consumption - {vessel_name}", fontsize=16)
     plt.subplots_adjust(top=0.93)
-    return fig
+    return fig, stats
     
 def analyze_speed_consumption(vessel_name):
     speed_data = fetch_speed_consumption_data(vessel_name)
-    chart = plot_speed_consumption(vessel_name, speed_data)
-    return chart
+    chart, stats = plot_speed_consumption(vessel_name, speed_data)
+    return chart, stats
 
 # LLM Prompts and Functions
 FEW_SHOT_EXAMPLES = """
@@ -285,22 +308,23 @@ def get_llm_analysis(query: str, vessel_name: str, data_summary: str) -> str:
 def generate_data_summary(vessel_name: str, decision: str) -> str:
     summary = f"Vessel Name: {vessel_name}\n"
     
-    if decision in ["hull_performance", "combined_performance"]:
-        chart, power_loss, hull_condition = analyze_hull_performance(vessel_name)
-        summary += "Hull Performance Data:\n"
-        summary += f"- Chart available: {'Yes' if chart is not None else 'No'}\n"
-        summary += "- Current excess power: {}\n".format(
-            f"{power_loss:.2f}%" if power_loss is not None else "Not available"
-        )
-        summary += f"- Hull condition: {hull_condition if hull_condition is not None else 'Not available'}\n"
-    
     if decision in ["speed_consumption", "combined_performance"]:
-        speed_chart = analyze_speed_consumption(vessel_name)
+        speed_chart, speed_stats = analyze_speed_consumption(vessel_name)
         summary += "Speed Consumption Data:\n"
         summary += f"- Chart available: {'Yes' if speed_chart is not None else 'No'}\n"
+        if speed_stats:
+            summary += f"- Overall speed range: {speed_stats['overall']['speed_range'][0]:.2f} to {speed_stats['overall']['speed_range'][1]:.2f} knots\n"
+            summary += f"- Overall consumption range: {speed_stats['overall']['consumption_range'][0]:.2f} to {speed_stats['overall']['consumption_range'][1]:.2f} mT/d\n"
+            for condition in ['laden', 'ballast']:
+                if condition in speed_stats:
+                    summary += f"- {condition.capitalize()} condition:\n"
+                    summary += f"  - Speed range: {speed_stats[condition]['speed_range'][0]:.2f} to {speed_stats[condition]['speed_range'][1]:.2f} knots\n"
+                    summary += f"  - Consumption range: {speed_stats[condition]['consumption_range'][0]:.2f} to {speed_stats[condition]['consumption_range'][1]:.2f} mT/d\n"
+                    summary += f"  - Slope of fit: {speed_stats[condition]['slope']:.4f}\n"
+                    summary += f"  - R-squared: {speed_stats[condition]['r_squared']:.4f}\n"
     
     return summary
-
+    
 def handle_user_query(query: str) -> Tuple[str, str, str]:
     vessel_name = clean_vessel_name(extract_vessel_name(query))
     if not vessel_name:
