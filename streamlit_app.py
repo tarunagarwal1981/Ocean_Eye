@@ -7,8 +7,15 @@ from modules.hull_performance import analyze_hull_performance, fetch_performance
 from modules.speed_consumption import analyze_speed_consumption
 from utils.nlp_utils import extract_vessel_name, clean_vessel_name
 
-# Initialize OpenAI API
-openai.api_key = os.getenv('OPENAI_API_KEY')
+def get_api_key():
+    if 'openai' in st.secrets:
+        return st.secrets['openai']['api_key']
+    api_key = os.getenv('OPENAI_API_KEY')
+    if api_key is None:
+        raise ValueError("API key not found. Set OPENAI_API_KEY as an environment variable.")
+    return api_key
+
+openai.api_key = get_api_key()
 
 # Few-Shot Learning Examples
 FEW_SHOT_EXAMPLES = """
