@@ -222,12 +222,14 @@ def generate_data_summary(vessel_name: str, decision: str) -> str:
     """Generate a summary of available data based on the LLM's decision."""
     summary = f"Vessel Name: {vessel_name}\n"
     
+    def generate_data_summary(vessel_name: str, decision: str) -> str:
+    """Generate a summary of available data based on the LLM's decision."""
+    summary = f"Vessel Name: {vessel_name}\n"
+    
     if decision in ["hull_performance", "combined_performance"]:
         hull_data = fetch_hull_performance_data(vessel_name)
         summary += f"Hull Performance Data:\n"
         summary += f"- Chart available: {'Yes' if hull_data['chart_available'] else 'No'}\n"
-        summary += f"- Current excess power: {hull_data['power_loss']:.2f}% if hull_data['power_loss'] is not None else 'Not available'}\n"
-        summary += f"- Current excess power: {hull_data['power_loss']:.2f}% if hull_data['power_loss'] is not None else 'Not available'}\n"
         summary += f"- Current excess power: {f'{hull_data['power_loss']:.2f}%' if hull_data['power_loss'] is not None else 'Not available'}\n"
         summary += f"- Hull condition: {hull_data['hull_condition'] if hull_data['hull_condition'] is not None else 'Not available'}\n"
         summary += f"- Historical performance data available: {'Yes' if hull_data['performance_data_available'] else 'No'}\n"
