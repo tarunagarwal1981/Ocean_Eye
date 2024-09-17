@@ -228,9 +228,11 @@ def generate_data_summary(vessel_name: str, decision: str) -> str:
     
     if decision in ["hull_performance", "combined_performance"]:
         hull_data = fetch_hull_performance_data(vessel_name)
-        summary += f"Hull Performance Data:\n"
+        summary += "Hull Performance Data:\n"
         summary += f"- Chart available: {'Yes' if hull_data['chart_available'] else 'No'}\n"
-        summary += f"- Current excess power: {f'{hull_data['power_loss']:.2f}%' if hull_data['power_loss'] is not None else 'Not available'}\n"
+        summary += "- Current excess power: {}\n".format(
+            f"{hull_data['power_loss']:.2f}%" if hull_data['power_loss'] is not None else "Not available"
+        )
         summary += f"- Hull condition: {hull_data['hull_condition'] if hull_data['hull_condition'] is not None else 'Not available'}\n"
         summary += f"- Historical performance data available: {'Yes' if hull_data['performance_data_available'] else 'No'}\n"
         summary += f"- Six months summary data available: {'Yes' if hull_data['six_months_data_available'] else 'No'}\n"
@@ -240,7 +242,7 @@ def generate_data_summary(vessel_name: str, decision: str) -> str:
     
     if decision in ["speed_consumption", "combined_performance"]:
         speed_data = fetch_speed_consumption_data(vessel_name)
-        summary += f"Speed Consumption Data:\n"
+        summary += "Speed Consumption Data:\n"
         summary += f"- Chart available: {'Yes' if speed_data['chart_available'] else 'No'}\n"
     
     return summary
