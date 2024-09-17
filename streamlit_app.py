@@ -1,32 +1,25 @@
 import streamlit as st
 import openai
 import os
-import pandas as pd
-from datetime import datetime, timedelta
-from utils.nlp_utils import process_user_input, extract_vessel_name, clean_vessel_name
+import json
+from typing import Dict, Any
 from modules.hull_performance import analyze_hull_performance, fetch_performance_data, fetch_six_months_data
 from modules.speed_consumption import analyze_speed_consumption
+from utils.nlp_utils import extract_vessel_name, clean_vessel_name
 
-def get_api_key():
-    if 'openai' in st.secrets:
-        return st.secrets['openai']['api_key']
-    api_key = os.getenv('OPENAI_API_KEY')
-    if api_key is None:
-        raise ValueError("API key not found. Set OPENAI_API_KEY as an environment variable.")
-    return api_key
+# Initialize OpenAI API
+openai.api_key = os.getenv('OPENAI_API_KEY')
 
-openai.api_key = get_api_key()
-
-FEW_SHOT_PROMPT = """
-You are an AI assistant specialized in vessel performance analysis. Here are some example Q&As:
-
+# Few-Shot Learning Examples
+FEW_SHOT_EXAMPLES = """
+Example 1:
 Q: What's the hull performance of the vessel Oceanica Explorer?
 A: I've analyzed the hull performance data for Oceanica Explorer. Here's what I found:
 
 1. Current Excess Power: 8.7%. This means the vessel currently requires 8.7% more power to maintain its speed compared to a clean hull condition.
 2. Fouling Rate: Approximately 0.5% increase in power loss per month over the last 6 months, indicating a moderate level of fouling accumulation.
-3. Forecasted Hull Cleaning: Scheduled for 2023-11-15. It's important to plan operations around this date to optimize performance.
-4. Data Confidence: We have sufficient valid data points after the last hull cleaning event to make these assessments with high confidence.
+3. Hull Condition: Based on the current excess power, the hull condition is considered Average.
+4. Forecasted Hull Cleaning: Scheduled for 2023-11-15. It's important to plan operations around this date to optimize performance.
 5. Performance Impact: The 8.7% excess power requirement translates to approximately 6-7% increased fuel consumption, assuming typical operating conditions.
 
 Recommendations:
@@ -35,21 +28,22 @@ Recommendations:
 3. Implement operational measures like speed optimization to mitigate the impact of increased power requirements.
 4. After the next hull cleaning, ensure proper data collection to maintain accurate performance tracking.
 
-Q: Can you provide the hull performance analysis for the vessel Starlight Voyager?
-A: I've looked into the hull performance data for Starlight Voyager. Here's what I found:
+Example 2:
+Q: Can you provide the speed consumption profile for the vessel Starlight Voyager?
+A: I've analyzed the speed consumption data for Starlight Voyager. Here's what I found:
 
-1. Current Excess Power: Data unavailable. We don't have enough valid data points after the last hull cleaning event to calculate a reliable current excess power figure.
-2. Fouling Rate: Despite the lack of a current excess power figure, the data shows an average increase of approximately 0.3% in power loss per month over the last 6 months.
-3. Forecasted Hull Cleaning: Date not available due to insufficient data to accurately predict the next optimal cleaning date.
-4. Data Confidence: Our confidence in the current hull performance assessment is low due to insufficient recent data.
-5. Performance Impact: Without a current excess power figure, we can't accurately quantify the performance impact. However, based on the fouling rate, we can estimate that the impact is likely increasing over time.
+1. Speed Range: The vessel operates between 10 to 18 knots based on the available data.
+2. Consumption Trend: There's a clear non-linear increase in fuel consumption as speed increases.
+3. Optimal Speed: The most fuel-efficient speed appears to be around 12-13 knots, where the increase in consumption per knot is lowest.
+4. High-Speed Impact: Operating at speeds above 16 knots results in a sharp increase in fuel consumption, potentially over 50% more than at optimal speed.
+5. Loading Conditions: The data shows distinct consumption profiles for laden and ballast conditions, with ballast condition generally showing lower consumption at the same speeds.
 
 Recommendations:
-1. Urgently review the data collection process for Starlight Voyager to ensure all required performance data is being recorded accurately.
-2. Conduct a manual hull inspection to assess the current condition, as we lack reliable data-driven insights.
-3. If a hull cleaning has been performed recently, ensure that this event is properly recorded in the system to reset the performance baseline.
-4. Implement a more rigorous data validation process to prevent gaps in critical performance metrics.
-5. Consider using historical data or fleet averages to estimate the current hull condition until more reliable data is available.
+1. Prioritize operating at speeds between 12-13 knots when possible to maximize fuel efficiency.
+2. For time-sensitive operations, consider the trade-off between increased speed and fuel consumption, especially above 16 knots.
+3. Optimize route planning to take advantage of the more efficient ballast condition where applicable.
+4. Monitor and record speed and consumption data regularly to identify any deviations from this profile, which could indicate performance issues.
+5. Consider conducting a detailed analysis of the economic impact of speed on your specific trade routes to find the optimal balance between speed and efficiency.
 
 Now, please answer the following question in a similar style, using the data I provide:
 {user_question}
@@ -59,140 +53,121 @@ Now, please answer the following question in a similar style, using the data I p
 Provide a detailed analysis and recommendations based on this data.
 """
 
-def get_gpt_response(prompt):
-    try:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are an AI assistant specialized in vessel performance."},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=500,
-            n=1,
-            stop=None,
-            temperature=0.7,
-        )
-        return response.choices[0].message['content'].strip()
-    except Exception as e:
-        st.error(f"Error in GPT response: {str(e)}")
-        return "I'm sorry, I encountered an error while processing your request."
+# LLM Prompts
+DECISION_PROMPT = """
+You are an AI assistant specialized in vessel performance analysis. Your task is to determine what type of information is needed to answer the user's query. The options are:
 
-def calculate_fouling_rate(performance_data):
-    if performance_data.empty:
-        return 0
-    
-    performance_data['report_date'] = pd.to_datetime(performance_data['report_date'])
-    performance_data = performance_data.sort_values('report_date')
-    
-    latest_date = performance_data['report_date'].max()
-    six_months_ago = latest_date - timedelta(days=180)
-    
-    last_six_months_data = performance_data[performance_data['report_date'] > six_months_ago]
-    
-    if len(last_six_months_data) < 2:
-        return 0  # Not enough data points in the last 6 months
-    
-    first_date = last_six_months_data['report_date'].iloc[0]
-    last_date = last_six_months_data['report_date'].iloc[-1]
-    first_power_loss = last_six_months_data['hull_roughness_power_loss'].iloc[0]
-    last_power_loss = last_six_months_data['hull_roughness_power_loss'].iloc[-1]
-    
-    days_difference = (last_date - first_date).days
-    if days_difference == 0:
-        return 0
-    
-    monthly_rate = (last_power_loss - first_power_loss) / days_difference * 30  # Assuming 30 days per month
-    return monthly_rate
+1. Hull performance
+2. Speed consumption
+3. Combined performance (both hull and speed)
+4. General vessel information
 
-def handle_user_query(user_input: str) -> str:
-    intent, vessel_present = process_user_input(user_input)
-    vessel_name = extract_vessel_name(user_input)
-    cleaned_vessel_name = clean_vessel_name(vessel_name)
+Based on the user's query, output your decision as a JSON object with the following structure:
+{
+    "decision": "hull_performance" or "speed_consumption" or "combined_performance" or "general_info",
+    "explanation": "Brief explanation of why you made this decision"
+}
 
-    if not cleaned_vessel_name:
+User Query: {query}
+
+Decision:
+"""
+
+ANALYSIS_PROMPT = FEW_SHOT_EXAMPLES
+
+def get_llm_decision(query: str) -> Dict[str, str]:
+    """Get the LLM's decision on what type of information is needed."""
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "You are a vessel performance analysis expert."},
+            {"role": "user", "content": DECISION_PROMPT.format(query=query)}
+        ],
+        temperature=0.3,
+    )
+    return json.loads(response.choices[0].message['content'])
+
+def get_llm_analysis(query: str, vessel_name: str, data_summary: str) -> str:
+    """Get the LLM's analysis based on the query and available data."""
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        messages=[
+            {"role": "system", "content": "You are a vessel performance analysis expert."},
+            {"role": "user", "content": ANALYSIS_PROMPT.format(
+                user_question=query, data_summary=data_summary)}
+        ],
+        temperature=0.5,
+    )
+    return response.choices[0].message['content']
+
+def fetch_hull_performance_data(vessel_name: str) -> Dict[str, Any]:
+    """Fetch hull performance data and generate summary."""
+    chart, power_loss, hull_condition = analyze_hull_performance(vessel_name)
+    performance_data = fetch_performance_data(vessel_name)
+    six_months_data = fetch_six_months_data(vessel_name)
+    
+    return {
+        "chart_available": chart is not None,
+        "power_loss": power_loss,
+        "hull_condition": hull_condition,
+        "performance_data_available": not performance_data.empty,
+        "six_months_data_available": not six_months_data.empty,
+        "forecasted_cleaning": six_months_data['forecasted_hull_cleaning_date'].iloc[0] if not six_months_data.empty else None,
+    }
+
+def fetch_speed_consumption_data(vessel_name: str) -> Dict[str, Any]:
+    """Fetch speed consumption data and generate summary."""
+    chart = analyze_speed_consumption(vessel_name)
+    return {
+        "chart_available": chart is not None,
+    }
+
+def generate_data_summary(vessel_name: str, decision: str) -> str:
+    """Generate a summary of available data based on the LLM's decision."""
+    summary = f"Vessel Name: {vessel_name}\n"
+    
+    if decision in ["hull_performance", "combined_performance"]:
+        hull_data = fetch_hull_performance_data(vessel_name)
+        summary += f"Hull Performance Data:\n"
+        summary += f"- Chart available: {'Yes' if hull_data['chart_available'] else 'No'}\n"
+        summary += f"- Current excess power: {hull_data['power_loss']:.2f}%\n"
+        summary += f"- Hull condition: {hull_data['hull_condition']}\n"
+        summary += f"- Historical performance data available: {'Yes' if hull_data['performance_data_available'] else 'No'}\n"
+        summary += f"- Six months summary data available: {'Yes' if hull_data['six_months_data_available'] else 'No'}\n"
+        summary += f"- Forecasted hull cleaning: {hull_data['forecasted_cleaning'] if hull_data['forecasted_cleaning'] else 'Not available'}\n"
+    
+    if decision in ["speed_consumption", "combined_performance"]:
+        speed_data = fetch_speed_consumption_data(vessel_name)
+        summary += f"Speed Consumption Data:\n"
+        summary += f"- Chart available: {'Yes' if speed_data['chart_available'] else 'No'}\n"
+    
+    return summary
+
+def handle_user_query(query: str) -> str:
+    """Main function to handle user queries."""
+    vessel_name = clean_vessel_name(extract_vessel_name(query))
+    if not vessel_name:
         return "I couldn't identify a vessel name in your query. Could you please provide a specific vessel name?"
 
-    if intent == "hull_performance":
-        return process_hull_performance(cleaned_vessel_name)
-    elif intent == "speed_consumption":
-        return process_speed_consumption(cleaned_vessel_name)
-    elif intent == "hull_performance_and_speed_consumption" or intent == "vessel_performance":
-        return process_combined_performance(cleaned_vessel_name)
-    else:
-        return get_gpt_response(FEW_SHOT_PROMPT.format(
-            user_question=user_input,
-            data_summary=f"Vessel Name: {cleaned_vessel_name}\nIntent: General vessel performance query"
-        ))
+    llm_decision = get_llm_decision(query)
+    data_summary = generate_data_summary(vessel_name, llm_decision['decision'])
+    analysis = get_llm_analysis(query, vessel_name, data_summary)
 
-def process_hull_performance(vessel_name: str) -> str:
-    try:
-        chart, power_loss, hull_condition = analyze_hull_performance(vessel_name)
-        performance_data = fetch_performance_data(vessel_name)
-        six_months_data = fetch_six_months_data(vessel_name)
-        
+    return analysis, llm_decision['decision'], vessel_name
+
+def display_charts(decision: str, vessel_name: str):
+    """Display relevant charts based on the LLM's decision."""
+    if decision in ["hull_performance", "combined_performance"]:
+        chart, _, _ = analyze_hull_performance(vessel_name)
         if chart:
             st.pyplot(chart)
-        
-        if power_loss is None or hull_condition is None:
-            return f"Sorry, I couldn't find specific hull performance data for {vessel_name}."
-        
-        fouling_rate = calculate_fouling_rate(performance_data)
-        forecasted_cleaning = six_months_data['forecasted_hull_cleaning_date'].iloc[0] if not six_months_data.empty else None
-        
-        data_summary = f"""
-        Vessel Name: {vessel_name}
-        Current Excess Power: {power_loss:.2f}%
-        Hull Condition: {hull_condition}
-        Fouling Rate (last 6 months): {fouling_rate:.2f}% per month
-        Forecasted Hull Cleaning: {forecasted_cleaning if forecasted_cleaning else 'Not available'}
-        """
-        
-        gpt_response = get_gpt_response(FEW_SHOT_PROMPT.format(
-            user_question=f"Analyze the hull performance of {vessel_name}",
-            data_summary=data_summary
-        ))
-        
-        return gpt_response
-    
-    except Exception as e:
-        st.error(f"An error occurred while processing hull performance: {str(e)}")
-        return "I encountered an error while analyzing hull performance. Please try again or check if the vessel name is correct."
-
-def process_speed_consumption(vessel_name: str) -> str:
-    try:
+    if decision in ["speed_consumption", "combined_performance"]:
         chart = analyze_speed_consumption(vessel_name)
         if chart:
             st.pyplot(chart)
-            return get_gpt_response(FEW_SHOT_PROMPT.format(
-                user_question=f"Analyze the speed consumption profile of {vessel_name}",
-                data_summary=f"Vessel Name: {vessel_name}\nSpeed consumption data is available and plotted."
-            ))
-        else:
-            return f"Sorry, I couldn't find specific speed consumption data for {vessel_name}."
-    except Exception as e:
-        st.error(f"An error occurred while processing speed consumption: {str(e)}")
-        return "I encountered an error while analyzing speed consumption. Please try again or check if the vessel name is correct."
-
-def process_combined_performance(vessel_name: str) -> str:
-    hull_response = process_hull_performance(vessel_name)
-    speed_response = process_speed_consumption(vessel_name)
-    
-    combined_prompt = f"""
-    Provide a combined analysis of hull performance and speed consumption for the vessel {vessel_name}.
-    
-    Hull Performance Analysis:
-    {hull_response}
-    
-    Speed Consumption Analysis:
-    {speed_response}
-    
-    Summarize the overall vessel performance and provide recommendations based on both analyses.
-    """
-    
-    return get_gpt_response(combined_prompt)
 
 def main():
-    st.title("Vessel Performance Chatbot")
+    st.title("Advanced Vessel Performance Chatbot")
 
     if 'messages' not in st.session_state:
         st.session_state.messages = []
@@ -206,11 +181,13 @@ def main():
         with st.chat_message("user"):
             st.markdown(prompt)
 
-        response = handle_user_query(prompt)
+        analysis, decision, vessel_name = handle_user_query(prompt)
 
-        st.session_state.messages.append({"role": "assistant", "content": response})
+        st.session_state.messages.append({"role": "assistant", "content": analysis})
         with st.chat_message("assistant"):
-            st.markdown(response)
+            st.markdown(analysis)
+
+        display_charts(decision, vessel_name)
 
 if __name__ == "__main__":
     main()
