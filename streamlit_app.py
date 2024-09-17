@@ -3,9 +3,11 @@ import openai
 import os
 import json
 import pandas as pd
-from typing import Dict, Any, Tuple
+import numpy as np
+import matplotlib.pyplot as plt
 from datetime import datetime, timedelta
-from utils.database_utils import get_db_connection
+from typing import Dict, Any, Tuple
+from utils.database_utils import fetch_data_from_db
 from utils.nlp_utils import extract_vessel_name, clean_vessel_name
 
 # Initialize OpenAI API
@@ -19,7 +21,148 @@ def get_api_key():
 
 openai.api_key = get_api_key()
 
-# Few-Shot Learning Examples
+# Hull Performance Functions
+def fetch_performance_data(vessel_name):
+    query = f"""
+    SELECT vessel_name, report_date, hull_roughness_power_loss
+    FROM hull_performance
+    WHERE UPPER(vessel_name) = '{vessel_name.upper()}'
+    """
+    return fetch_data_from_db(query)
+
+def fetch_six_months_data(vessel_name):
+    query = f"""
+    SELECT vessel_name, hull_rough_power_loss_pct_ed
+    FROM hull_performance_six_months
+    WHERE UPPER(vessel_name) = '{vessel_name.upper()}'
+    """
+    return fetch_data_from_db(query)
+
+def plot_hull_roughness(vessel_name, data):
+    if data.empty:
+        return None
+    
+    data['report_date'] = pd.to_datetime(data['report_date'], errors='coerce')
+    today = datetime.today().date()
+    six_months_ago = today - timedelta(days=180)
+    
+    filtered_data = data[(data['report_date'].dt.date >= six_months_ago) & (data['hull_roughness_power_loss'].notnull())]
+    
+    if filtered_data.empty:
+        return None
+    
+    dates = pd.to_datetime(filtered_data['report_date'])
+    power_loss = filtered_data['hull_roughness_power_loss']
+    
+    x_numeric = (dates - dates.min()).dt.days
+    
+    fig, ax = plt.subplots(figsize=(10, 6))
+    ax.scatter(dates, power_loss, c='cyan', edgecolors='white', s=50, alpha=0.8)
+    
+    coeffs = np.polyfit(x_numeric, power_loss, 1)
+    best_fit_line = np.poly1d(coeffs)
+    
+    x_smooth = np.linspace(x_numeric.min(), x_numeric.max(), 200)
+    ax.plot(dates.min() + pd.to_timedelta(x_smooth, unit='D'), best_fit_line(x_smooth), color='#00FF00', linewidth=2, linestyle='-', label='Best Fit Line')
+    
+    ax.set_facecolor('#000C20')
+    fig.patch.set_facecolor('#000C20')
+    
+    ax.set_xlabel('Dates', fontsize=12, color='white')
+    ax.set_ylabel('Excess Power %', fontsize=12, color='white')
+    ax.set_title(f'Hull Roughness Power Loss - {vessel_name}', fontsize=14, color='white')
+    
+    ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%b'))
+    ax.xaxis.set_major_locator(plt.matplotlib.dates.MonthLocator())
+    
+    plt.xticks(color='white', fontsize=10)
+    plt.yticks(color='white', fontsize=10)
+    
+    ax.set_xlim(dates.min(), dates.max())
+    ax.set_ylim(power_loss.min() - 0.05 * (power_loss.max() - power_loss.min()), power_loss.max() + 0.05 * (power_loss.max() - power_loss.min()))
+    
+    ax.legend(loc='upper left', fontsize=10, frameon=False, facecolor='none', edgecolor='none', labelcolor='white')
+    
+    return fig
+
+def get_hull_condition(power_loss_pct):
+    if power_loss_pct > 25:
+        return "Poor"
+    elif 15 <= power_loss_pct <= 25:
+        return "Average"
+    else:
+        return "Good"
+
+def analyze_hull_performance(vessel_name):
+    performance_data = fetch_performance_data(vessel_name)
+    six_months_data = fetch_six_months_data(vessel_name)
+    
+    chart = plot_hull_roughness(vessel_name, performance_data)
+    
+    if not six_months_data.empty:
+        power_loss_pct_ed = six_months_data['hull_rough_power_loss_pct_ed'].iloc[-1]
+        hull_condition = get_hull_condition(power_loss_pct_ed)
+    else:
+        power_loss_pct_ed = None
+        hull_condition = None
+    
+    return chart, power_loss_pct_ed, hull_condition
+
+# Speed Consumption Functions
+def fetch_speed_consumption_data(vessel_name):
+    query = f"""
+    SELECT vessel_name, report_date, speed, normalised_consumption, loading_condition
+    FROM hull_performance
+    WHERE UPPER(vessel_name) = '{vessel_name.upper()}'
+    """
+    return fetch_data_from_db(query)
+
+def plot_speed_consumption(vessel_name, data):
+    if data.empty:
+        return None
+    
+    data['report_date'] = pd.to_datetime(data['report_date'], errors='coerce')
+    today = datetime.today().date()
+    six_months_ago = today - timedelta(days=180)
+    
+    filtered_data = data[(data['report_date'].dt.date >= six_months_ago)]
+    
+    if filtered_data.empty:
+        return None
+    
+    laden_data = filtered_data[filtered_data['loading_condition'].str.lower() == 'laden']
+    ballast_data = filtered_data[filtered_data['loading_condition'].str.lower() == 'ballast']
+    
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(14, 6))
+    
+    if not laden_data.empty:
+        laden_dates = pd.to_datetime(laden_data['report_date'])
+        x_laden = laden_data['speed']
+        y_laden = laden_data['normalised_consumption']
+        scatter_laden = ax1.scatter(x_laden, y_laden, c=(laden_dates - laden_dates.min()).dt.days, cmap='plasma', s=50, alpha=0.8)
+        ax1.set_title('Laden Condition')
+        ax1.set_xlabel('Speed (knots)')
+        ax1.set_ylabel('ME Consumption (mT/d)')
+        plt.colorbar(scatter_laden, ax=ax1, label="Time Progression")
+    
+    if not ballast_data.empty:
+        ballast_dates = pd.to_datetime(ballast_data['report_date'])
+        x_ballast = ballast_data['speed']
+        y_ballast = ballast_data['normalised_consumption']
+        scatter_ballast = ax2.scatter(x_ballast, y_ballast, c=(ballast_dates - ballast_dates.min()).dt.days, cmap='plasma', s=50, alpha=0.8)
+        ax2.set_title('Ballast Condition')
+        ax2.set_xlabel('Speed (knots)')
+        plt.colorbar(scatter_ballast, ax=ax2, label="Time Progression")
+    
+    plt.tight_layout()
+    return fig
+
+def analyze_speed_consumption(vessel_name):
+    speed_data = fetch_speed_consumption_data(vessel_name)
+    chart = plot_speed_consumption(vessel_name, speed_data)
+    return chart
+
+# LLM Prompts and Functions
 FEW_SHOT_EXAMPLES = """
 Example 1:
 Q: What's the hull performance of the vessel Oceanica Explorer?
@@ -62,7 +205,6 @@ Now, please answer the following question in a similar style, using the data I p
 Provide a detailed analysis and recommendations based on this data.
 """
 
-# LLM Prompts
 DECISION_PROMPT = """
 You are an AI assistant specialized in vessel performance analysis. Your task is to determine what type of information is needed to answer the user's query. The options are:
 
@@ -83,7 +225,6 @@ Decision:
 """
 
 def get_llm_decision(query: str) -> Dict[str, str]:
-    """Get the LLM's decision on what type of information is needed."""
     try:
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
@@ -108,7 +249,6 @@ def get_llm_decision(query: str) -> Dict[str, str]:
         }
 
 def get_llm_analysis(query: str, vessel_name: str, data_summary: str) -> str:
-    """Get the LLM's analysis based on the query and available data."""
     response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
         messages=[
@@ -120,135 +260,26 @@ def get_llm_analysis(query: str, vessel_name: str, data_summary: str) -> str:
     )
     return response.choices[0].message['content']
 
-def fetch_six_months_data(vessel_name: str) -> pd.DataFrame:
-    """Fetch data from hull_performance_six_months table for a specific vessel."""
-    conn = get_db_connection()
-    try:
-        query = """
-        SELECT *
-        FROM hull_performance_six_months
-        WHERE vessel_name = %s
-        """
-        data = pd.read_sql(query, conn, params=(vessel_name,))
-    finally:
-        conn.close()
-    return data
-
-def fetch_performance_data(vessel_name: str) -> pd.DataFrame:
-    """Fetch performance data for a specific vessel."""
-    conn = get_db_connection()
-    try:
-        query = """
-        SELECT report_date, hull_roughness_power_loss
-        FROM hull_performance
-        WHERE vessel_name = %s
-        ORDER BY report_date DESC
-        LIMIT 180  -- Assuming we want the last 6 months of data
-        """
-        data = pd.read_sql(query, conn, params=(vessel_name,))
-    finally:
-        conn.close()
-    return data
-
-def analyze_hull_performance(vessel_name: str) -> Tuple[Any, float, str]:
-    """Analyze hull performance for a specific vessel."""
-    performance_data = fetch_performance_data(vessel_name)
-    
-    if performance_data.empty:
-        return None, None, "Unknown"
-    
-    # Generate chart (you'll need to implement this part)
-    chart = generate_hull_performance_chart(performance_data)
-    
-    # Calculate current power loss (using the most recent data point)
-    current_power_loss = performance_data['hull_roughness_power_loss'].iloc[0]
-    
-    # Determine hull condition
-    hull_condition = determine_hull_condition(current_power_loss)
-    
-    return chart, current_power_loss, hull_condition
-
-def determine_hull_condition(power_loss: float) -> str:
-    """Determine hull condition based on power loss."""
-    if power_loss is None:
-        return "Unknown"
-    elif power_loss < 5:
-        return "Excellent"
-    elif power_loss < 10:
-        return "Good"
-    elif power_loss < 15:
-        return "Fair"
-    else:
-        return "Poor"
-
-def generate_hull_performance_chart(performance_data: pd.DataFrame):
-    # Implement chart generation logic here
-    # For now, we'll return None as a placeholder
-    return None
-
-def fetch_hull_performance_data(vessel_name: str) -> Dict[str, Any]:
-    """Fetch hull performance data and generate summary."""
-    chart, power_loss, hull_condition = analyze_hull_performance(vessel_name)
-    performance_data = fetch_performance_data(vessel_name)
-    six_months_data = fetch_six_months_data(vessel_name)
-    
-    forecasted_cleaning = None
-    six_months_data_available = False
-    if not six_months_data.empty:
-        six_months_data_available = True
-        if 'forecasted_hull_cleaning_date' in six_months_data.columns:
-            forecasted_cleaning = six_months_data['forecasted_hull_cleaning_date'].iloc[0]
-            if pd.isnull(forecasted_cleaning):
-                forecasted_cleaning = "Not available (insufficient data)"
-    
-    return {
-        "chart_available": chart is not None,
-        "power_loss": power_loss,
-        "hull_condition": hull_condition,
-        "performance_data_available": not performance_data.empty,
-        "six_months_data_available": six_months_data_available,
-        "forecasted_cleaning": forecasted_cleaning,
-    }
-
-def fetch_speed_consumption_data(vessel_name: str) -> Dict[str, Any]:
-    """Fetch speed consumption data and generate summary."""
-    # Implement speed consumption data fetching logic here
-    # For now, we'll return a placeholder
-    return {
-        "chart_available": False,
-    }
-
 def generate_data_summary(vessel_name: str, decision: str) -> str:
-    """Generate a summary of available data based on the LLM's decision."""
-    summary = f"Vessel Name: {vessel_name}\n"
-    
-def generate_data_summary(vessel_name: str, decision: str) -> str:
-    """Generate a summary of available data based on the LLM's decision."""
     summary = f"Vessel Name: {vessel_name}\n"
     
     if decision in ["hull_performance", "combined_performance"]:
-        hull_data = fetch_hull_performance_data(vessel_name)
+        chart, power_loss, hull_condition = analyze_hull_performance(vessel_name)
         summary += "Hull Performance Data:\n"
-        summary += f"- Chart available: {'Yes' if hull_data['chart_available'] else 'No'}\n"
+        summary += f"- Chart available: {'Yes' if chart is not None else 'No'}\n"
         summary += "- Current excess power: {}\n".format(
-            f"{hull_data['power_loss']:.2f}%" if hull_data['power_loss'] is not None else "Not available"
+            f"{power_loss:.2f}%" if power_loss is not None else "Not available"
         )
-        summary += f"- Hull condition: {hull_data['hull_condition'] if hull_data['hull_condition'] is not None else 'Not available'}\n"
-        summary += f"- Historical performance data available: {'Yes' if hull_data['performance_data_available'] else 'No'}\n"
-        summary += f"- Six months summary data available: {'Yes' if hull_data['six_months_data_available'] else 'No'}\n"
-        summary += f"- Forecasted hull cleaning: {hull_data['forecasted_cleaning'] if hull_data['forecasted_cleaning'] else 'Not available'}\n"
-        if hull_data['forecasted_cleaning'] == "Not available (insufficient data)":
-            summary += "  Note: Insufficient valid data points after the last event for accurate forecasting.\n"
+        summary += f"- Hull condition: {hull_condition if hull_condition is not None else 'Not available'}\n"
     
     if decision in ["speed_consumption", "combined_performance"]:
-        speed_data = fetch_speed_consumption_data(vessel_name)
+        speed_chart = analyze_speed_consumption(vessel_name)
         summary += "Speed Consumption Data:\n"
-        summary += f"- Chart available: {'Yes' if speed_data['chart_available'] else 'No'}\n"
+        summary += f"- Chart available: {'Yes' if speed_chart is not None else 'No'}\n"
     
     return summary
 
 def handle_user_query(query: str) -> Tuple[str, str, str]:
-    """Main function to handle user queries."""
     vessel_name = clean_vessel_name(extract_vessel_name(query))
     if not vessel_name:
         return "I couldn't identify a vessel name in your query. Could you please provide a specific vessel name?", "general_info", None
@@ -260,14 +291,14 @@ def handle_user_query(query: str) -> Tuple[str, str, str]:
     return analysis, llm_decision['decision'], vessel_name
 
 def display_charts(decision: str, vessel_name: str):
-    """Display relevant charts based on the LLM's decision."""
     if decision in ["hull_performance", "combined_performance"]:
         chart, _, _ = analyze_hull_performance(vessel_name)
         if chart:
             st.pyplot(chart)
     if decision in ["speed_consumption", "combined_performance"]:
-        # Implement speed consumption chart display here
-        pass
+        speed_chart = analyze_speed_consumption(vessel_name)
+        if speed_chart:
+            st.pyplot(speed_chart)
 
 def main():
     st.title("Advanced Vessel Performance Chatbot")
@@ -290,7 +321,8 @@ def main():
         with st.chat_message("assistant"):
             st.markdown(analysis)
 
-        display_charts(decision, vessel_name)
+        if vessel_name:
+            display_charts(decision, vessel_name)
 
 if __name__ == "__main__":
     main()
