@@ -139,9 +139,6 @@ def plot_speed_consumption(vessel_name, data):
     
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
     
-    def exp_func_2nd_order(x, a, b, c, d, e):
-        return a * np.exp(b * x) + c * np.exp(d * x) + e
-    
     for ax, condition_data, title in [(ax1, laden_data, 'Laden Condition'), (ax2, ballast_data, 'Ballast Condition')]:
         if not condition_data.empty:
             dates = pd.to_datetime(condition_data['report_date'])
@@ -151,35 +148,25 @@ def plot_speed_consumption(vessel_name, data):
             scatter = ax.scatter(x, y, c=(dates - dates.min()).dt.days, cmap='viridis', s=50, alpha=0.8)
             
             try:
-                print(f"Attempting to fit 2nd order exponential curve for {title}")
-                print(f"Data shape: x={x.shape}, y={y.shape}")
-                print(f"x range: {x.min()} to {x.max()}")
-                print(f"y range: {y.min()} to {y.max()}")
+                # First-order polynomial fit (equivalent to linear fit)
+                coeffs = np.polyfit(x, y, 1)
+                poly = np.poly1d(coeffs)
                 
-                # Fit 2nd order exponential curve
-                popt, pcov = curve_fit(exp_func_2nd_order, x, y, p0=[1, 0.1, 1, 0.1, 1], maxfev=10000)
-                
-                # Generate points for smooth curve
+                # Calculate R-squared
+                yhat = poly(x)
+                ybar = np.sum(y) / len(y)
+                ssreg = np.sum((yhat - ybar)**2)
+                sstot = np.sum((y - ybar)**2)
+                r_squared = ssreg / sstot
+
+                # Plot polynomial fit
                 x_smooth = np.linspace(x.min(), x.max(), 100)
-                y_smooth = exp_func_2nd_order(x_smooth, *popt)
-                
-                # Plot 2nd order exponential best fit curve
-                ax.plot(x_smooth, y_smooth, 'r-', label='2nd Order Exponential Fit')
-                print(f"Successfully plotted 2nd order exponential fit for {title}")
-            except RuntimeError as e:
-                print(f"Error fitting 2nd order exponential curve for {title}: {str(e)}")
-                print("Falling back to polynomial fit")
-                try:
-                    # Fallback to polynomial fit
-                    z = np.polyfit(x, y, 3)
-                    p = np.poly1d(z)
-                    x_smooth = np.linspace(x.min(), x.max(), 100)
-                    ax.plot(x_smooth, p(x_smooth), 'g-', label='Polynomial Fit (Fallback)')
-                    print(f"Successfully plotted polynomial fit for {title}")
-                except Exception as poly_e:
-                    print(f"Error fitting polynomial curve: {str(poly_e)}")
+                ax.plot(x_smooth, poly(x_smooth), 'r-', label=f'Polynomial Fit (R² = {r_squared:.3f})')
+                print(f"Successfully plotted first-order polynomial fit for {title}")
+                print(f"Coefficients: {coeffs}")
+                print(f"R²: {r_squared:.4f}")
             except Exception as e:
-                print(f"Unexpected error in curve fitting for {title}: {str(e)}")
+                print(f"Error fitting polynomial curve for {title}: {str(e)}")
             
             ax.legend(fontsize=8)
             ax.set_title(title)
