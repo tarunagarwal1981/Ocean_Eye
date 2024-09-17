@@ -222,7 +222,7 @@ def generate_data_summary(vessel_name: str, decision: str) -> str:
     """Generate a summary of available data based on the LLM's decision."""
     summary = f"Vessel Name: {vessel_name}\n"
     
-    def generate_data_summary(vessel_name: str, decision: str) -> str:
+def generate_data_summary(vessel_name: str, decision: str) -> str:
     """Generate a summary of available data based on the LLM's decision."""
     summary = f"Vessel Name: {vessel_name}\n"
     
