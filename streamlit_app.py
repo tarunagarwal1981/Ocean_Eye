@@ -330,6 +330,13 @@ def get_llm_analysis(query: str, vessel_name: str, data_summary: str) -> str:
 def generate_data_summary(vessel_name: str, decision: str) -> str:
     summary = f"Vessel Name: {vessel_name}\n"
     
+    if decision in ["hull_performance", "combined_performance"]:
+        hull_chart, power_loss_pct_ed, hull_condition = analyze_hull_performance(vessel_name)
+        summary += "Hull Performance Data:\n"
+        summary += f"- Chart available: {'Yes' if hull_chart is not None else 'No'}\n"
+        summary += f"- Current excess power: {power_loss_pct_ed:.2f}% if power_loss_pct_ed is not None else 'Not available'}\n"
+        summary += f"- Hull condition: {hull_condition if hull_condition is not None else 'Not available'}\n"
+    
     if decision in ["speed_consumption", "combined_performance"]:
         speed_chart, speed_stats = analyze_speed_consumption(vessel_name)
         summary += "Speed Consumption Data:\n"
@@ -356,6 +363,8 @@ def handle_user_query(query: str) -> Tuple[str, str, str]:
     data_summary = generate_data_summary(vessel_name, llm_decision['decision'])
     analysis = get_llm_analysis(query, vessel_name, data_summary)
 
+    # Display charts based on the decision
+    display_charts(llm_decision['decision'], vessel_name)
     return analysis, llm_decision['decision'], vessel_name
 
 def display_charts(decision: str, vessel_name: str):
@@ -401,8 +410,7 @@ def main():
         with st.chat_message("assistant"):
             st.markdown(analysis)
 
-        if vessel_name:
-            display_charts(decision, vessel_name)
+        # Charts are now displayed within handle_user_query, so we don't need to call display_charts here
 
 if __name__ == "__main__":
     main()
