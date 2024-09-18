@@ -258,7 +258,7 @@ Recommendations:
 *Please note: This analysis is as good as the data reported by the vessel. We kindly request you to remind the vessel to report data accurately and periodically. Accurate analysis not only helps reduce the vessel's carbon footprint but also realizes fuel cost savings.*
 
 Guidelines for Analysis:
-- If the user asks about vessel performance or hull performance, include **both the speed consumption chart and hull performance chart** for reference.
+- If the user asks about vessel performance or hull performance, always include **both the speed consumption chart and hull performance chart** for reference.
 - If the hull condition is gauged as **Good**, do not recommend any hull cleaning or underwater inspection.
 - If the hull condition is **Average**, recommend performing an underwater hull inspection and propeller polishing.
 - If the hull condition is **Poor**, recommend performing hull cleaning and propeller polishing.
