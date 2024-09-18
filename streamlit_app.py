@@ -334,10 +334,10 @@ def generate_data_summary(vessel_name: str, decision: str) -> str:
         hull_chart, power_loss_pct_ed, hull_condition = analyze_hull_performance(vessel_name)
         summary += "Hull Performance Data:\n"
         summary += f"- Chart available: {'Yes' if hull_chart is not None else 'No'}\n"
-        if power_loss_pct_ed is not None:
-    summary += f"- Current excess power: {power_loss_pct_ed:.2f}%\n"
-else:
-    summary += "- Current excess power: Not available\n"
+    if power_loss_pct_ed is not None:
+        summary += f"- Current excess power: {power_loss_pct_ed:.2f}%\n"
+    else:
+        summary += "- Current excess power: Not available\n"
         summary += f"- Hull condition: {hull_condition if hull_condition is not None else 'Not available'}\n"
     
     if decision in ["speed_consumption", "combined_performance"]:
