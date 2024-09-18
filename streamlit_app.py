@@ -303,12 +303,13 @@ Respond only with the JSON object, no other text.
 
 def get_llm_decision(query: str) -> Dict[str, str]:
     try:
-        prompt = f"{DECISION_PROMPT}\n\nUser Query: {query}\n\nDecision:"
+        prompt = f"{HUMAN_PROMPT} {DECISION_PROMPT}\n\nUser Query: {query}\n\nDecision:{AI_PROMPT}"
         response = client.completions.create(
             model="claude-2",
             prompt=prompt,
             max_tokens_to_sample=300,
             temperature=0.3,
+            stop_sequences=[HUMAN_PROMPT]
         )
         decision_text = response.completion.strip()
         return json.loads(decision_text)
@@ -325,12 +326,13 @@ def get_llm_decision(query: str) -> Dict[str, str]:
         }
 
 def get_llm_analysis(query: str, vessel_name: str, data_summary: str) -> str:
-    prompt = f"{FEW_SHOT_EXAMPLES}\n\nUser Question: {query}\n\nVessel Data:\n{data_summary}\n\nAnalysis:"
+    prompt = f"{HUMAN_PROMPT} {FEW_SHOT_EXAMPLES}\n\nUser Question: {query}\n\nVessel Data:\n{data_summary}\n\nAnalysis:{AI_PROMPT}"
     response = client.completions.create(
         model="claude-2",
         prompt=prompt,
         max_tokens_to_sample=1000,
         temperature=0.5,
+        stop_sequences=[HUMAN_PROMPT]
     )
     return response.completion
 
