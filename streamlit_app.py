@@ -228,9 +228,13 @@ A: I've analyzed the hull performance data for Oceanica Explorer. Here's what I 
 
 Recommendations:
 1. Monitor the hull condition closely as you approach the forecasted cleaning date.
-2. Consider performing underwater hull inspections to validate the fouling rate and adjust the cleaning date if necessary.
+2. **Since the hull condition is Average**, I recommend performing an underwater hull inspection and propeller polishing to validate the fouling rate and adjust the cleaning date if necessary.
 3. Implement operational measures like speed optimization to mitigate the impact of increased power requirements.
 4. After the next hull cleaning, ensure proper data collection to maintain accurate performance tracking.
+
+**Additionally, here's the speed consumption chart and hull performance chart for your reference.**
+
+*Please note: This analysis is as good as the data reported by the vessel. We kindly request you to remind the vessel to report data accurately and periodically. Accurate analysis not only helps reduce the vessel's carbon footprint but also realizes fuel cost savings.*
 
 Example 2:
 Q: Can you provide the speed consumption profile for the vessel Starlight Voyager?
@@ -248,6 +252,17 @@ Recommendations:
 3. Optimize route planning to take advantage of the more efficient ballast condition where applicable.
 4. Monitor and record speed and consumption data regularly to identify any deviations from this profile, which could indicate performance issues.
 5. Consider conducting a detailed analysis of the economic impact of speed on your specific trade routes to find the optimal balance between speed and efficiency.
+
+**Additionally, here's the speed consumption chart for your reference.**
+
+*Please note: This analysis is as good as the data reported by the vessel. We kindly request you to remind the vessel to report data accurately and periodically. Accurate analysis not only helps reduce the vessel's carbon footprint but also realizes fuel cost savings.*
+
+Guidelines for Analysis:
+- If the user asks about vessel performance or hull performance, include **both the speed consumption chart and hull performance chart** for reference.
+- If the hull condition is gauged as **Good**, do not recommend any hull cleaning or underwater inspection.
+- If the hull condition is **Average**, recommend performing an underwater hull inspection and propeller polishing.
+- If the hull condition is **Poor**, recommend performing hull cleaning and propeller polishing.
+- After each response, include a polite reminder: *This analysis is as good as the data reported by the vessel. We kindly request you to remind the vessel to report data accurately and periodically. Accurate analysis not only helps reduce the vessel's carbon footprint but also realizes fuel cost savings.*
 
 Now, please answer the following question in a similar style, using the data I provide:
 {user_question}
