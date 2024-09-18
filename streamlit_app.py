@@ -5,23 +5,35 @@ import json
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import anthropic
 from datetime import datetime, timedelta
 from typing import Dict, Any, Tuple
 from utils.database_utils import fetch_data_from_db
 from utils.nlp_utils import extract_vessel_name, clean_vessel_name
 from scipy.optimize import curve_fit
+from anthropic import Anthropic, HUMAN_PROMPT, AI_PROMPT
 
 
 # Initialize OpenAI API
+#def get_api_key():
+#    if 'openai' in st.secrets:
+#        return st.secrets['openai']['api_key']
+#    api_key = os.getenv('OPENAI_API_KEY')
+#    if api_key is None:
+#        raise ValueError("API key not found. Set OPENAI_API_KEY as an environment variable.")
+#    return api_key
+
+#openai.api_key = get_api_key()
+
 def get_api_key():
-    if 'openai' in st.secrets:
-        return st.secrets['openai']['api_key']
-    api_key = os.getenv('OPENAI_API_KEY')
+    if 'anthropic' in st.secrets:
+        return st.secrets['anthropic']['api_key']
+    api_key = os.getenv('ANTHROPIC_API_KEY')
     if api_key is None:
-        raise ValueError("API key not found. Set OPENAI_API_KEY as an environment variable.")
+        raise ValueError("API key not found. Set ANTHROPIC_API_KEY as an environment variable.")
     return api_key
 
-openai.api_key = get_api_key()
+client = anthropic.Anthropic(api_key=get_api_key())
 
 # Hull Performance Functions
 def fetch_performance_data(vessel_name):
@@ -281,51 +293,46 @@ You are an AI assistant specialized in vessel performance analysis. Your task is
 4. General vessel information
 
 Based on the user's query, output your decision as a JSON object with the following structure:
-{{
+{
     "decision": "hull_performance" or "speed_consumption" or "combined_performance" or "general_info",
     "explanation": "Brief explanation of why you made this decision"
-}}
+}
 
-User Query: {query}
-
-Decision:
+Respond only with the JSON object, no other text.
 """
 
 def get_llm_decision(query: str) -> Dict[str, str]:
     try:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[
-                {"role": "system", "content": "You are a vessel performance analysis expert."},
-                {"role": "user", "content": DECISION_PROMPT.format(query=query)}
-            ],
+        prompt = f"{DECISION_PROMPT}\n\nUser Query: {query}\n\nDecision:"
+        response = client.completions.create(
+            model="claude-2",
+            prompt=prompt,
+            max_tokens_to_sample=300,
             temperature=0.3,
         )
-        decision_text = response.choices[0].message['content'].strip()
+        decision_text = response.completion.strip()
         return json.loads(decision_text)
     except json.JSONDecodeError:
         return {
             "decision": "general_info",
-            "explanation": "Failed to parse LLM response, defaulting to general info."
+            "explanation": "Failed to parse Claude response, defaulting to general info."
         }
     except Exception as e:
-        st.error(f"Error in LLM decision: {str(e)}")
+        st.error(f"Error in Claude decision: {str(e)}")
         return {
             "decision": "general_info",
             "explanation": "An error occurred, defaulting to general info."
         }
 
 def get_llm_analysis(query: str, vessel_name: str, data_summary: str) -> str:
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": "You are a vessel performance analysis expert."},
-            {"role": "user", "content": FEW_SHOT_EXAMPLES.format(
-                user_question=query, data_summary=data_summary)}
-        ],
+    prompt = f"{FEW_SHOT_EXAMPLES}\n\nUser Question: {query}\n\nVessel Data:\n{data_summary}\n\nAnalysis:"
+    response = client.completions.create(
+        model="claude-2",
+        prompt=prompt,
+        max_tokens_to_sample=1000,
         temperature=0.5,
     )
-    return response.choices[0].message['content']
+    return response.completion
 
 def generate_data_summary(vessel_name: str, decision: str) -> str:
     summary = f"Vessel Name: {vessel_name}\n"
@@ -393,7 +400,7 @@ def display_charts(decision: str, vessel_name: str):
             st.error(f"An error occurred while generating the hull performance chart: {str(e)}")
             print(f"Error in display_charts: {str(e)}")  # For debugging
 def main():
-    st.title("Advanced Vessel Performance Chatbot")
+    st.title("Advanced Vessel Performance Chatbot (Powered by Claude)")
 
     if 'messages' not in st.session_state:
         st.session_state.messages = []
@@ -403,8 +410,8 @@ def main():
             st.markdown(message["content"])
 
     if prompt := st.chat_input("What would you like to know about vessel performance?"):
-        st.session_state.messages.append({"role": "user", "content": prompt})
-        with st.chat_message("user"):
+        st.session_state.messages.append({"role": "human", "content": prompt})
+        with st.chat_message("human"):
             st.markdown(prompt)
 
         analysis, decision, vessel_name = handle_user_query(prompt)
@@ -412,8 +419,6 @@ def main():
         st.session_state.messages.append({"role": "assistant", "content": analysis})
         with st.chat_message("assistant"):
             st.markdown(analysis)
-
-        # Charts are now displayed within handle_user_query, so we don't need to call display_charts here
 
 if __name__ == "__main__":
     main()
