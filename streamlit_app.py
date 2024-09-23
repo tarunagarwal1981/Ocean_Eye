@@ -1,20 +1,35 @@
 import streamlit as st
-from agents.vessel_performance_agent import VesselPerformanceAgent
+import openai
 from agents.hull_performance_agent import HullPerformanceAgent
+from agents.speed_consumption_agent import SpeedConsumptionAgent
 from utils.database_utils import get_db_engine
 from utils.nlp_utils import get_llm_decision
+import os
 
-def select_agent(query: str):
+# Initialize OpenAI API
+def get_api_key():
+    if 'openai' in st.secrets:
+        return st.secrets['openai']['api_key']
+    api_key = os.getenv('OPENAI_API_KEY')
+    if api_key is None:
+        raise ValueError("API key not found. Set OPENAI_API_KEY as an environment variable.")
+    return api_key
+
+openai.api_key = get_api_key()
+
+def select_agents(query: str):
     decision = get_llm_decision(query)
     if decision['decision'] == 'hull_performance':
-        return HullPerformanceAgent()
+        return [HullPerformanceAgent()]
     elif decision['decision'] == 'speed_consumption':
-        return VesselPerformanceAgent()
+        return [SpeedConsumptionAgent()]
+    elif decision['decision'] == 'vessel_performance':
+        return [HullPerformanceAgent(), SpeedConsumptionAgent()]
     else:
-        return VesselPerformanceAgent()  # Default to vessel performance
+        return [HullPerformanceAgent(), SpeedConsumptionAgent()]  # Default to both
 
 def main():
-    st.title("Agentic Vessel Performance Chatbot")
+    st.title("Vessel Performance Chatbot")
 
     if 'messages' not in st.session_state:
         st.session_state.messages = []
@@ -28,16 +43,34 @@ def main():
         with st.chat_message("human"):
             st.markdown(prompt)
 
-        agent = select_agent(prompt)
+        agents = select_agents(prompt)
         engine = get_db_engine()
         
-        response = agent.process_query(prompt, engine)
+        combined_response = ""
+        for agent in agents:
+            response = agent.process_query(prompt, engine)
+            combined_response += response + "\n\n"
 
-        st.session_state.messages.append({"role": "assistant", "content": response})
+        st.session_state.messages.append({"role": "assistant", "content": combined_response})
         with st.chat_message("assistant"):
-            st.markdown(response)
+            st.markdown(combined_response)
 
-        agent.display_charts(st)
+        for agent in agents:
+            agent.display_charts(st)
+
+        if "report" in prompt.lower():
+            report = generate_report(agents, prompt)
+            st.download_button(
+                label="Download Report",
+                data=report,
+                file_name="vessel_performance_report.pdf",
+                mime="application/pdf"
+            )
+
+def generate_report(agents, query):
+    # Implement report generation logic here
+    # You can use a library like ReportLab to generate PDF reports
+    pass
 
 if __name__ == "__main__":
     main()
