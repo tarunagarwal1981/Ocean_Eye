@@ -1,71 +1,34 @@
-import re
+import openai
 
-def extract_vessel_name(user_input: str) -> str:
-    patterns = [
-        r"(?:vessel|ship|boat)\s+([\w\s-]+)",  # Matches "vessel Name"
-        r"(?:of|for)\s+([\w\s-]+)",           # Matches "of Name" or "for Name"
-        r"([\w\s-]+)(?:'s|\s+performance)",   # Matches "Name's" or "Name performance"
-        r"\b([\w-]{2,}(?:\s+[\w-]+){0,3})\b"  # Matches 1-4 word phrases
-    ]
+def get_llm_decision(query: str):
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": "You are an AI assistant that categorizes queries about vessel performance."},
+            {"role": "user", "content": f"Categorize this query: {query}"}
+        ],
+        temperature=0.3,
+        max_tokens=100
+    )
+    decision = response.choices[0].message['content']
     
-    for pattern in patterns:
-        match = re.search(pattern, user_input, re.IGNORECASE)
-        if match:
-            # Remove words like 'performance', 'consumption', etc. from the vessel name
-            vessel_name = match.group(1).strip()
-            return ' '.join(word for word in vessel_name.split() if word.lower() not in ['vessel', 'performance', 'consumption', 'hull', 'speed', 'of', 'for'])
-    
-    return None
-
-def process_user_input(user_input: str) -> (str, bool):
-    user_input_lower = user_input.lower()
-    
-    # Define intent keywords
-    intent_keywords = {
-        "hull_performance": ["hull", "performance", "power loss", "roughness"],
-        "speed_consumption": ["speed", "consumption", "fuel", "efficiency"],
-        #"hull_performance_and_speed_consumption": ["overall", "combined", "both"]
-        "vessel_performance": ["vessel performance", "overall performance", "combined performance"]
-    }
-    
-    # Check for multiple intents
-    intents_found = []
-    for intent, keywords in intent_keywords.items():
-        if any(keyword in user_input_lower for keyword in keywords):
-            intents_found.append(intent)
-    
-    # Determine the final intent
-    if len(intents_found) > 1 or "hull_performance_and_speed_consumption" in intents_found:
-        return "hull_performance_and_speed_consumption", True
-    elif len(intents_found) == 1:
-        return intents_found[0], True
+    if "hull" in decision.lower():
+        return {"decision": "hull_performance"}
+    elif "speed" in decision.lower() or "consumption" in decision.lower():
+        return {"decision": "speed_consumption"}
+    elif "vessel performance" in decision.lower():
+        return {"decision": "vessel_performance"}
     else:
-        return "general_info", False
+        return {"decision": "general"}
 
-# Function to clean and normalize vessel names
-def clean_vessel_name(name: str) -> str:
-    if name:
-        # Remove any extra spaces and convert to title case
-        return ' '.join(name.split()).title()
-    return None
-
-# Test the functions
-if __name__ == "__main__":
-    test_inputs = [
-        "What's the hull performance of vessel Amis Ace?",
-        "Show me the speed consumption for Trammo Marycam",
-        "Give me overall performance data on Nordic Orion",
-        "Tell me about the Stella Kosan",
-        "What's the latest info on Brage R?"
-    ]
-    
-    for input_text in test_inputs:
-        intent, vessel_present = process_user_input(input_text)
-        vessel_name = extract_vessel_name(input_text)
-        cleaned_name = clean_vessel_name(vessel_name)
-        print(f"Input: {input_text}")
-        print(f"Intent: {intent}")
-        print(f"Vessel Present: {vessel_present}")
-        print(f"Extracted Vessel Name: {vessel_name}")
-        print(f"Cleaned Vessel Name: {cleaned_name}")
-        print("---")
+def get_llm_analysis(query: str, vessel_name: str, data_summary: str, agent_type: str):
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": f"You are an AI assistant specialized in {agent_type} analysis for vessels."},
+            {"role": "user", "content": f"Analyze this query about {vessel_name}: {query}\n\nData Summary: {data_summary}"}
+        ],
+        temperature=0.7,
+        max_tokens=500
+    )
+    return response.choices[0].message['content']
