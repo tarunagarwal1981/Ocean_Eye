@@ -6,3 +6,4 @@ numpy
 openai == 0.28
 scipy
 anthropic
+sqlalchemy
