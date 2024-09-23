@@ -1,6 +1,6 @@
 
 from .base_agent import Agent
-from ocean_eye.utils.database_utils import fetch_hull_performance_data
+from utils.database_utils import fetch_hull_performance_data
 from utils.nlp_utils import clean_vessel_name, extract_vessel_name, get_llm_analysis
 
 class HullPerformanceAgent(Agent):
