@@ -1,24 +1,33 @@
+# agents/hull_performance_agent.py
 
-from .base_agent import Agent
-from ..utils.database_utils import fetch_hull_performance_data
-from ..utils.nlp_utils import clean_vessel_name, extract_vessel_name, get_llm_analysis
+from .agent_base import Agent
+from utils.database_utils import fetch_performance_data
+from utils.nlp_utils import extract_vessel_name
+import matplotlib.pyplot as plt
+import streamlit as st
 
 class HullPerformanceAgent(Agent):
-    def process_query(self, query: str, engine):
-        vessel_name = clean_vessel_name(extract_vessel_name(query))
-        if not vessel_name:
-            return "I couldn't identify a vessel name in your query. Could you please provide a specific vessel name?"
+    def handle(self, query: str, vessel_name: str) -> str:
+        performance_data = fetch_performance_data(vessel_name)
+        if performance_data.empty:
+            return f"No hull performance data available for {vessel_name}."
 
-        data = fetch_hull_performance_data(vessel_name, engine)
-        data_summary = self.generate_data_summary(data)
-        
-        analysis = get_llm_analysis(query, vessel_name, data_summary, "hull performance")
-        return analysis
+        chart, power_loss_pct_ed, hull_condition = self.analyze_hull_performance(vessel_name, performance_data)
+        if chart:
+            st.pyplot(chart)
+        return f"**Hull Performance for {vessel_name}:**\n- Current Excess Power: {power_loss_pct_ed}%\n- Hull Condition: {hull_condition}"
 
-    def generate_data_summary(self, data):
-        # Implement data summary generation for hull performance
-        pass
+    def analyze_hull_performance(self, vessel_name, data):
+        # Implement your hull performance analysis logic here
+        # For now, we'll use placeholder values
+        power_loss_pct_ed = 10  # Example value
+        hull_condition = "Average"  # Example value
 
-    def display_charts(self, st):
-        # Implement hull performance chart display logic using Streamlit
-        pass
+        # Generate a sample chart (you should replace this with your actual plotting code)
+        fig, ax = plt.subplots()
+        ax.plot(data['report_date'], data['hull_roughness_power_loss'])
+        ax.set_title(f'Hull Performance of {vessel_name}')
+        ax.set_xlabel('Date')
+        ax.set_ylabel('Power Loss (%)')
+
+        return fig, power_loss_pct_ed, hull_condition
