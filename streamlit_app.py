@@ -9,8 +9,11 @@ import sys
 from pathlib import Path
 
 # Add the project root to the Python path
-project_root = Path(__file__).parent.absolute()
+project_root = Path(__file__).parent.parent.absolute()
 sys.path.insert(0, str(project_root))
+
+from ocean_eye.agents import HullPerformanceAgent, SpeedConsumptionAgent
+from ocean_eye.utils import get_db_engine, get_llm_decision
 
 # Initialize OpenAI API
 def get_api_key():
