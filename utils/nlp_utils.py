@@ -32,3 +32,16 @@ def get_llm_analysis(query: str, vessel_name: str, data_summary: str, agent_type
         max_tokens=500
     )
     return response.choices[0].message['content']
+
+def clean_vessel_name(name: str) -> str:
+    # Implement vessel name cleaning logic
+    return name.strip().upper()
+
+def extract_vessel_name(query: str) -> str:
+    # Implement vessel name extraction logic
+    # This is a placeholder implementation
+    words = query.split()
+    for i in range(len(words) - 1):
+        if words[i].lower() == "vessel" and i + 1 < len(words):
+            return words[i + 1]
+    return ""
