@@ -5,6 +5,12 @@ from agents.speed_consumption_agent import SpeedConsumptionAgent
 from utils.database_utils import get_db_engine
 from utils.nlp_utils import get_llm_decision
 import os
+import sys
+from pathlib import Path
+
+# Add the project root to the Python path
+project_root = Path(__file__).parent.absolute()
+sys.path.insert(0, str(project_root))
 
 # Initialize OpenAI API
 def get_api_key():
