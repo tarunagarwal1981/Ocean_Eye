@@ -6,6 +6,8 @@ import json
 from agents.hull_performance_agent import analyze_hull_performance
 from agents.speed_consumption_agent import analyze_speed_consumption
 from utils.nlp_utils import extract_vessel_name, clean_vessel_name
+from typing import Dict
+
 
 # LLM Prompts
 FEW_SHOT_EXAMPLES = """
