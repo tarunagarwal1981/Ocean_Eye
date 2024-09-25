@@ -18,7 +18,7 @@ def fetch_hull_performance_data(vessel_name, engine):
     query = f"""
     SELECT vessel_name, report_date, hull_roughness_power_loss
     FROM hull_performance
-    WHERE UPPER(vessel_name) = '{vessel_name.upper()}'
+    WHERE UPPER(vessel_name) LIKE '%{vessel_name.upper().replace("'", "''")}%'
     """
     with engine.connect() as connection:
         result = connection.execute(query)
@@ -28,7 +28,7 @@ def fetch_speed_consumption_data(vessel_name, engine):
     query = f"""
     SELECT vessel_name, report_date, speed, normalised_consumption, loading_condition
     FROM hull_performance
-    WHERE UPPER(vessel_name) = '{vessel_name.upper()}'
+    WHERE UPPER(vessel_name) LIKE '%{vessel_name.upper().replace("'", "''")}%'
     """
     with engine.connect() as connection:
         result = connection.execute(query)
