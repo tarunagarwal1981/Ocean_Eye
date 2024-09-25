@@ -3,58 +3,16 @@ import openai
 import os
 import pandas as pd
 import json
+import re
 from typing import Dict
 from agents.hull_performance_agent import analyze_hull_performance
 from agents.speed_consumption_agent import analyze_speed_consumption
-from utils.nlp_utils import extract_vessel_name, clean_vessel_name
+from utils.nlp_utils import clean_vessel_name
 
 # LLM Prompts
-FEW_SHOT_EXAMPLES = """
-Example 1:
-Q: What's the hull performance of the vessel Oceanica Explorer?
-A: I've analyzed the hull performance data for Oceanica Explorer. Here's what I found:
-
-1. Current Excess Power: 8.7%. This means the vessel currently requires 8.7% more power to maintain its speed compared to a clean hull condition.
-2. Fouling Rate: Approximately 0.5% increase in power loss per month over the last 6 months, indicating a moderate level of fouling accumulation.
-3. Hull Condition: Based on the current excess power, the hull condition is considered Average.
-4. Forecasted Hull Cleaning: Scheduled for 2023-11-15. It's important to plan operations around this date to optimize performance.
-5. Performance Impact: The 8.7% excess power requirement translates to approximately 6-7% increased fuel consumption, assuming typical operating conditions.
-
-Recommendations:
-1. Monitor the hull condition closely as you approach the forecasted cleaning date.
-2. **Since the hull condition is Average**, I recommend performing an underwater hull inspection and propeller polishing to validate the fouling rate and adjust the cleaning date if necessary.
-3. Implement operational measures like speed optimization to mitigate the impact of increased power requirements.
-4. After the next hull cleaning, ensure proper data collection to maintain accurate performance tracking.
-
-**Additionally, here's the speed consumption chart and hull performance chart for your reference.**
-
-*Please note: This analysis is as good as the data reported by the vessel. We kindly request you to remind the vessel to report data accurately and periodically. Accurate analysis not only helps reduce the vessel's carbon footprint but also realizes fuel cost savings.*
-
-Example 2:
-Q: Can you provide the speed consumption profile for the vessel Starlight Voyager?
-A: I've analyzed the speed consumption data for Starlight Voyager. Here's what I found:
-
-1. Speed Range: The vessel operates between 10 to 18 knots based on the available data.
-2. Consumption Trend: There's a clear non-linear increase in fuel consumption as speed increases.
-3. Optimal Speed: The most fuel-efficient speed appears to be around 12-13 knots, where the increase in consumption per knot is lowest.
-4. High-Speed Impact: Operating at speeds above 16 knots results in a sharp increase in fuel consumption, potentially over 50% more than at optimal speed.
-5. Loading Conditions: The data shows distinct consumption profiles for laden and ballast conditions, with ballast condition generally showing lower consumption at the same speeds.
-
-Recommendations:
-1. Prioritize operating at speeds between 12-13 knots when possible to maximize fuel efficiency.
-2. For time-sensitive operations, consider the trade-off between increased speed and fuel consumption, especially above 16 knots.
-3. Optimize route planning to take advantage of the more efficient ballast condition where applicable.
-4. Monitor and record speed and consumption data regularly to identify any deviations from this profile, which could indicate performance issues.
-5. Consider conducting a detailed analysis of the economic impact of speed on your specific trade routes to find the optimal balance between speed and efficiency.
-
-**Additionally, here's the speed consumption chart for your reference.**
-
-*Please note: This analysis is as good as the data reported by the vessel. We kindly request you to remind the vessel to report data accurately and periodically. Accurate analysis not only helps reduce the vessel's carbon footprint but also realizes fuel cost savings.*
-"""
-
 DECISION_PROMPT = """
-You are an AI assistant specialized in vessel performance analysis. Based on the user's query, you need to do two things:
-1. Extract only the vessel name from the query. Do not include any additional words like 'hull performance' or 'speed consumption'. Use your intelligence to extract the name of the vessel from user query.
+You are an AI assistant specialized in vessel performance analysis. The user will ask a query related to vessel performance. Based on the user's query, do two things:
+1. Extract only the vessel name from the query. The vessel name may appear after the word 'of' (e.g., 'hull performance of Trammo Marycam' => 'Trammo Marycam').
 2. Determine what type of performance information is needed to answer the user's query. The options are:
    - Hull performance
    - Speed consumption
@@ -69,8 +27,6 @@ Output your response as a JSON object with the following structure:
 }
 """
 
-
-
 # Function to get the OpenAI API key
 def get_api_key():
     if 'openai' in st.secrets:
@@ -83,6 +39,13 @@ def get_api_key():
 # Initialize OpenAI API
 openai.api_key = get_api_key()
 
+# Fallback regex to extract vessel name in case LLM fails
+def fallback_extract_vessel_name(query: str) -> str:
+    match = re.search(r'of\s+(.+)', query, re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+    return query  # If regex fails, return the original query
+
 # Function to call ChatGPT for decision making using ChatCompletion
 def get_llm_decision(query: str) -> Dict[str, str]:
     messages = [
@@ -93,87 +56,55 @@ def get_llm_decision(query: str) -> Dict[str, str]:
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=messages,
-            max_tokens=100,
+            max_tokens=200,
             temperature=0.3
         )
         decision_text = response.choices[0].message['content'].strip()
-        return json.loads(decision_text)
+        st.write(f"LLM Response: {decision_text}")  # Debugging output
+        
+        decision_data = json.loads(decision_text)
+        
+        # Fallback if the vessel name is not correctly extracted
+        if "vessel_name" not in decision_data or decision_data['vessel_name'] is None or 'hull performance' in decision_data['vessel_name'].lower():
+            decision_data['vessel_name'] = fallback_extract_vessel_name(query)
+        
+        return decision_data
     except openai.error.InvalidRequestError as e:
         st.error(f"InvalidRequestError: {str(e)}")
         return {
+            "vessel_name": fallback_extract_vessel_name(query),
             "decision": "general_info",
             "explanation": "Invalid request. Defaulting to general info."
         }
     except Exception as e:
         st.error(f"Error in LLM decision: {str(e)}")
         return {
+            "vessel_name": fallback_extract_vessel_name(query),
             "decision": "general_info",
             "explanation": "An error occurred. Defaulting to general info."
         }
 
-# Function to get the analysis from ChatGPT using ChatCompletion
-def get_llm_analysis(query: str, vessel_name: str, data_summary: str) -> str:
-    messages = [
-        {"role": "system", "content": FEW_SHOT_EXAMPLES},
-        {"role": "user", "content": f"User Question: {query}\n\nVessel Data: {data_summary}"}
-    ]
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=messages,
-        max_tokens=1000,
-        temperature=0.5
-    )
-    return response.choices[0].message['content'].strip()
-
-# Function to generate the vessel data summary
-def generate_data_summary(vessel_name: str, decision: str) -> str:
-    summary = f"Vessel Name: {vessel_name}\n"
-    
-    if decision in ["hull_performance", "combined_performance"]:
-        hull_chart, power_loss_pct_ed, hull_condition = analyze_hull_performance(vessel_name)
-        summary += "Hull Performance Data:\n"
-        summary += f"- Chart available: {'Yes' if hull_chart is not None else 'No'}\n"
-        if power_loss_pct_ed is not None:
-            summary += f"- Current excess power: {power_loss_pct_ed:.2f}%\n"
-        else:
-            summary += "- Current excess power: Not available\n"
-        summary += f"- Hull condition: {hull_condition if hull_condition is not None else 'Not available'}\n"
-    
-    if decision in ["speed_consumption", "combined_performance"]:
-        speed_chart, speed_stats = analyze_speed_consumption(vessel_name)
-        summary += "Speed Consumption Data:\n"
-        summary += f"- Chart available: {'Yes' if speed_chart is not None else 'No'}\n"
-        if speed_stats:
-            summary += f"- Overall speed range: {speed_stats['overall']['speed_range'][0]:.2f} to {speed_stats['overall']['speed_range'][1]:.2f} knots\n"
-            summary += f"- Overall consumption range: {speed_stats['overall']['consumption_range'][0]:.2f} to {speed_stats['overall']['consumption_range'][1]:.2f} mT/d\n"
-            for condition in ['laden', 'ballast']:
-                if condition in speed_stats:
-                    summary += f"- {condition.capitalize()} condition:\n"
-                    summary += f"  - Speed range: {speed_stats[condition]['speed_range'][0]:.2f} to {speed_stats[condition]['speed_range'][1]:.2f} knots\n"
-                    summary += f"  - Consumption range: {speed_stats[condition]['consumption_range'][0]:.2f} to {speed_stats[condition]['consumption_range'][1]:.2f} mT/d\n"
-                    summary += f"  - Slope of fit: {speed_stats[condition]['slope']:.4f}\n"
-                    summary += f"  - R-squared: {speed_stats[condition]['r_squared']:.4f}\n"
-    
-    return summary
-
-# Function to handle user query and return analysis
 # Function to handle user query and return analysis
 def handle_user_query(query: str):
-    vessel_name = clean_vessel_name(extract_vessel_name(query))
+    # Get the decision and vessel name from the LLM (ChatGPT)
+    llm_decision = get_llm_decision(query)
     
+    vessel_name = llm_decision.get("vessel_name")
     if not vessel_name:
         return "I couldn't identify a vessel name in your query."
 
-    # Get the decision from the LLM (ChatGPT)
-    llm_decision = get_llm_decision(query)
-
-    # Generate data summary based on the decision made by LLM
-    data_summary = generate_data_summary(vessel_name, llm_decision['decision'])
-
+    st.write(f"Extracted Vessel Name: {vessel_name}")
+    
     # Based on the decision, call the appropriate agent
     if llm_decision['decision'] == 'hull_performance':
-        analysis = analyze_hull_performance(vessel_name)
-        st.write("Hull performance analysis executed.")
+        analysis, power_loss_pct, hull_condition = analyze_hull_performance(vessel_name)
+        st.write(f"Hull performance analysis executed for {vessel_name}.")
+        st.write(f"Analysis: {analysis}")
+        
+        if power_loss_pct is None or hull_condition is None:
+            st.warning(f"Hull performance chart is not available for this vessel.")
+        else:
+            st.success(f"Average Power Loss: {power_loss_pct:.2f}%, Hull Condition: {hull_condition}")
     
     elif llm_decision['decision'] == 'speed_consumption':
         analysis = analyze_speed_consumption(vessel_name)
@@ -181,7 +112,7 @@ def handle_user_query(query: str):
     
     elif llm_decision['decision'] == 'combined_performance':
         # Call both hull and speed consumption agents and combine the analysis
-        hull_analysis = analyze_hull_performance(vessel_name)
+        hull_analysis, _, _ = analyze_hull_performance(vessel_name)
         speed_analysis = analyze_speed_consumption(vessel_name)
         analysis = f"{hull_analysis}\n\n{speed_analysis}"
         st.write("Both hull performance and speed consumption analysis executed.")
