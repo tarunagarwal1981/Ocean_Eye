@@ -6,4 +6,4 @@ openai == 0.28
 scipy
 anthropic
 sqlalchemy
-psycopg2
+psycopg2-binary
