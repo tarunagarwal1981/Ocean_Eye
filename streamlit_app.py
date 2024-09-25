@@ -3,11 +3,10 @@ import openai
 import os
 import pandas as pd
 import json
+from typing import Dict
 from agents.hull_performance_agent import analyze_hull_performance
 from agents.speed_consumption_agent import analyze_speed_consumption
 from utils.nlp_utils import extract_vessel_name, clean_vessel_name
-from typing import Dict
-
 
 # LLM Prompts
 FEW_SHOT_EXAMPLES = """
@@ -82,34 +81,47 @@ def get_api_key():
 # Initialize OpenAI API
 openai.api_key = get_api_key()
 
-# Function to call ChatGPT for decision making
+# Function to call ChatGPT for decision making using ChatCompletion
 def get_llm_decision(query: str) -> Dict[str, str]:
-    prompt = f"{DECISION_PROMPT}\n\nUser Query: {query}\n\nDecision:"
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        prompt=prompt,
-        max_tokens=1000,
-        temperature=0.3
-    )
-    decision_text = response.choices[0].text.strip()
+    messages = [
+        {"role": "system", "content": DECISION_PROMPT},
+        {"role": "user", "content": query}
+    ]
     try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=messages,
+            max_tokens=100,
+            temperature=0.3
+        )
+        decision_text = response.choices[0].message['content'].strip()
         return json.loads(decision_text)
-    except json.JSONDecodeError:
+    except openai.error.InvalidRequestError as e:
+        st.error(f"InvalidRequestError: {str(e)}")
         return {
             "decision": "general_info",
-            "explanation": "Failed to parse GPT response, defaulting to general info."
+            "explanation": "Invalid request. Defaulting to general info."
+        }
+    except Exception as e:
+        st.error(f"Error in LLM decision: {str(e)}")
+        return {
+            "decision": "general_info",
+            "explanation": "An error occurred. Defaulting to general info."
         }
 
-# Function to get the analysis from ChatGPT
+# Function to get the analysis from ChatGPT using ChatCompletion
 def get_llm_analysis(query: str, vessel_name: str, data_summary: str) -> str:
-    prompt = f"{FEW_SHOT_EXAMPLES}\n\nUser Question: {query}\n\nVessel Data:\n{data_summary}\n\nAnalysis:"
+    messages = [
+        {"role": "system", "content": FEW_SHOT_EXAMPLES},
+        {"role": "user", "content": f"User Question: {query}\n\nVessel Data: {data_summary}"}
+    ]
     response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
-        prompt=prompt,
+        messages=messages,
         max_tokens=1000,
         temperature=0.5
     )
-    return response.choices[0].text.strip()
+    return response.choices[0].message['content'].strip()
 
 # Function to generate the vessel data summary
 def generate_data_summary(vessel_name: str, decision: str) -> str:
