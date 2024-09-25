@@ -54,7 +54,7 @@ Recommendations:
 
 DECISION_PROMPT = """
 You are an AI assistant specialized in vessel performance analysis. Based on the user's query, you need to do two things:
-1. Extract the vessel name.
+1. Extract only the vessel name from the query. Do not include any additional words like 'hull performance' or 'speed consumption'. Use your intelligence to extract the name of the vessel from user query.
 2. Determine what type of performance information is needed to answer the user's query. The options are:
    - Hull performance
    - Speed consumption
@@ -68,6 +68,7 @@ Output your response as a JSON object with the following structure:
     "explanation": "Brief explanation of why you made this decision"
 }
 """
+
 
 
 # Function to get the OpenAI API key
