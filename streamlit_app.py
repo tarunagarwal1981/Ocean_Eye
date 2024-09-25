@@ -53,21 +53,22 @@ Recommendations:
 """
 
 DECISION_PROMPT = """
-You are an AI assistant specialized in vessel performance analysis. Your task is to determine what type of information is needed to answer the user's query. The options are:
+You are an AI assistant specialized in vessel performance analysis. Based on the user's query, you need to do two things:
+1. Extract the vessel name.
+2. Determine what type of performance information is needed to answer the user's query. The options are:
+   - Hull performance
+   - Speed consumption
+   - Combined performance (both hull and speed)
+   - General vessel information
 
-1. Hull performance
-2. Speed consumption
-3. Combined performance (both hull and speed)
-4. General vessel information
-
-Based on the user's query, output your decision as a JSON object with the following structure:
+Output your response as a JSON object with the following structure:
 {
+    "vessel_name": "<vessel_name>",
     "decision": "hull_performance" or "speed_consumption" or "combined_performance" or "general_info",
     "explanation": "Brief explanation of why you made this decision"
 }
-
-Respond only with the JSON object, no other text.
 """
+
 
 # Function to get the OpenAI API key
 def get_api_key():
