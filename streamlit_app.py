@@ -85,10 +85,10 @@ openai.api_key = get_api_key()
 # Function to call ChatGPT for decision making
 def get_llm_decision(query: str) -> Dict[str, str]:
     prompt = f"{DECISION_PROMPT}\n\nUser Query: {query}\n\nDecision:"
-    response = openai.Completion.create(
+    response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
         prompt=prompt,
-        max_tokens=100,
+        max_tokens=1000,
         temperature=0.3
     )
     decision_text = response.choices[0].text.strip()
@@ -103,7 +103,7 @@ def get_llm_decision(query: str) -> Dict[str, str]:
 # Function to get the analysis from ChatGPT
 def get_llm_analysis(query: str, vessel_name: str, data_summary: str) -> str:
     prompt = f"{FEW_SHOT_EXAMPLES}\n\nUser Question: {query}\n\nVessel Data:\n{data_summary}\n\nAnalysis:"
-    response = openai.Completion.create(
+    response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo",
         prompt=prompt,
         max_tokens=1000,
