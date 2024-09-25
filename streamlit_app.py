@@ -1,81 +1,41 @@
-import sys
-import os
 import streamlit as st
 import openai
+import anthropic
+from utils.nlp_utils import extract_vessel_name, clean_vessel_name
+from agents.hull_performance_agent import analyze_hull_performance
+from agents.speed_consumption_agent import analyze_speed_consumption
+from utils.visualization_utils import plot_hull_roughness, plot_speed_consumption
 
-# Add the current directory to the Python path
-current_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(current_dir)
+def get_llm_decision(query: str):
+    prompt = f"Analyze the user query and determine if it's about hull performance or speed consumption: {query}"
+    # Use an LLM (Claude, GPT-4) to determine the intent
+    response = "speed_consumption"  # Mock response for now
+    return response
 
-from agents.hull_performance_agent import HullPerformanceAgent
-from agents.speed_consumption_agent import SpeedConsumptionAgent
-from utils.database_utils import get_db_engine
-from utils.nlp_utils import get_llm_decision
+def handle_user_query(query: str):
+    vessel_name = clean_vessel_name(extract_vessel_name(query))
+    if not vessel_name:
+        return "I couldn't find the vessel name in your query."
 
-# Initialize OpenAI API
-def get_api_key():
-    if 'openai' in st.secrets:
-        return st.secrets['openai']['api_key']
-    api_key = os.getenv('OPENAI_API_KEY')
-    if api_key is None:
-        raise ValueError("API key not found. Set OPENAI_API_KEY as an environment variable.")
-    return api_key
-
-openai.api_key = get_api_key()
-
-def select_agents(query: str):
     decision = get_llm_decision(query)
-    if decision['decision'] == 'hull_performance':
-        return [HullPerformanceAgent()]
-    elif decision['decision'] == 'speed_consumption':
-        return [SpeedConsumptionAgent()]
-    elif decision['decision'] == 'vessel_performance':
-        return [HullPerformanceAgent(), SpeedConsumptionAgent()]
+    
+    if decision == 'hull_performance':
+        chart, power_loss_pct_ed, hull_condition = analyze_hull_performance(vessel_name)
+        return f"Hull condition: {hull_condition}, Excess Power: {power_loss_pct_ed}%"
+    
+    elif decision == 'speed_consumption':
+        chart, stats = analyze_speed_consumption(vessel_name)
+        return "Speed consumption analysis completed."
+    
     else:
-        return [HullPerformanceAgent(), SpeedConsumptionAgent()]  # Default to both
-
-def generate_report(agents, query):
-    report_sections = [agent.generate_report_section() for agent in agents]
-    return "\n\n".join(report_sections)
+        return "Unknown query type."
 
 def main():
-    st.title("Vessel Performance Chatbot")
+    st.title("Advanced Vessel Performance Chatbot")
 
-    if 'messages' not in st.session_state:
-        st.session_state.messages = []
-
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-
-    if prompt := st.chat_input("What would you like to know about vessel performance?"):
-        st.session_state.messages.append({"role": "human", "content": prompt})
-        with st.chat_message("human"):
-            st.markdown(prompt)
-
-        agents = select_agents(prompt)
-        engine = get_db_engine()
-        
-        combined_response = ""
-        for agent in agents:
-            response = agent.process_query(prompt, engine)
-            combined_response += response + "\n\n"
-
-        st.session_state.messages.append({"role": "assistant", "content": combined_response})
-        with st.chat_message("assistant"):
-            st.markdown(combined_response)
-
-        for agent in agents:
-            agent.display_charts(st)
-
-        if "report" in prompt.lower():
-            report = generate_report(agents, prompt)
-            st.download_button(
-                label="Download Report",
-                data=report,
-                file_name="vessel_performance_report.pdf",
-                mime="application/pdf"
-            )
+    if prompt := st.text_input("Enter your query:"):
+        response = handle_user_query(prompt)
+        st.write(response)
 
 if __name__ == "__main__":
     main()
