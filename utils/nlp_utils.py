@@ -34,14 +34,18 @@ def get_llm_analysis(query: str, vessel_name: str, data_summary: str, agent_type
     return response.choices[0].message['content']
 
 def clean_vessel_name(name: str) -> str:
-    # Implement vessel name cleaning logic
-    return name.strip().upper()
+    # Remove any leading/trailing whitespace and convert to uppercase
+    return ' '.join(name.strip().upper().split())
 
 def extract_vessel_name(query: str) -> str:
-    # Implement vessel name extraction logic
-    # This is a placeholder implementation
-    words = query.split()
-    for i in range(len(words) - 1):
-        if words[i].lower() == "vessel" and i + 1 < len(words):
-            return words[i + 1]
-    return ""
+    # Split the query into words
+    words = query.lower().split()
+    
+    # Look for common patterns
+    for i, word in enumerate(words):
+        if word in ['of', 'for', 'vessel', 'ship']:
+            # Return the rest of the words as the vessel name
+            return ' '.join(words[i+1:])
+    
+    # If no pattern is found, return the last two words (assuming it might be a vessel name)
+    return ' '.join(words[-2:])
