@@ -155,18 +155,41 @@ def generate_data_summary(vessel_name: str, decision: str) -> str:
     return summary
 
 # Function to handle user query and return analysis
+# Function to handle user query and return analysis
 def handle_user_query(query: str):
     vessel_name = clean_vessel_name(extract_vessel_name(query))
+    
     if not vessel_name:
         return "I couldn't identify a vessel name in your query."
 
     # Get the decision from the LLM (ChatGPT)
     llm_decision = get_llm_decision(query)
-    data_summary = generate_data_summary(vessel_name, llm_decision['decision'])
-    analysis = get_llm_analysis(query, vessel_name, data_summary)
 
+    # Generate data summary based on the decision made by LLM
+    data_summary = generate_data_summary(vessel_name, llm_decision['decision'])
+
+    # Based on the decision, call the appropriate agent
+    if llm_decision['decision'] == 'hull_performance':
+        analysis = analyze_hull_performance(vessel_name)
+        st.write("Hull performance analysis executed.")
+    
+    elif llm_decision['decision'] == 'speed_consumption':
+        analysis = analyze_speed_consumption(vessel_name)
+        st.write("Speed consumption analysis executed.")
+    
+    elif llm_decision['decision'] == 'combined_performance':
+        # Call both hull and speed consumption agents and combine the analysis
+        hull_analysis = analyze_hull_performance(vessel_name)
+        speed_analysis = analyze_speed_consumption(vessel_name)
+        analysis = f"{hull_analysis}\n\n{speed_analysis}"
+        st.write("Both hull performance and speed consumption analysis executed.")
+    
+    else:
+        analysis = "The query seems to require general vessel information or is unclear. Please refine the query."
+    
     # Display charts based on the decision
     display_charts(llm_decision['decision'], vessel_name)
+    
     return analysis
 
 # Function to display the charts based on the LLM's decision
