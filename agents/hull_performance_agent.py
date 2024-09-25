@@ -1,43 +1,42 @@
 import pandas as pd
-import matplotlib.pyplot as plt
-import numpy as np
-from scipy import stats
-from datetime import datetime, timedelta
-from utils.database_utils import fetch_hull_performance_data
-from utils.nlp_utils import clean_vessel_name, extract_vessel_name, get_llm_analysis
-from agents.base_agent import Agent
-import logging
+from utils.database_utils import fetch_data_from_db
+from utils.visualization_utils import plot_hull_roughness
 
-logger = logging.getLogger(__name__)
+def fetch_performance_data(vessel_name):
+    query = f"""
+    SELECT vessel_name, report_date, hull_roughness_power_loss
+    FROM hull_performance
+    WHERE UPPER(vessel_name) = '{vessel_name.upper()}'
+    """
+    return fetch_data_from_db(query)
 
-class HullPerformanceAgent(Agent):
-    def __init__(self):
-        self.chart = None
+def fetch_six_months_data(vessel_name):
+    query = f"""
+    SELECT vessel_name, hull_rough_power_loss_pct_ed
+    FROM hull_performance_six_months
+    WHERE UPPER(vessel_name) = '{vessel_name.upper()}'
+    """
+    return fetch_data_from_db(query)
 
-    def process_query(self, query: str, engine):
-        vessel_name = clean_vessel_name(extract_vessel_name(query))
-        if not vessel_name:
-            return "I couldn't identify a vessel name in your query. Could you please provide a specific vessel name?"
+def analyze_hull_performance(vessel_name):
+    performance_data = fetch_performance_data(vessel_name)
+    six_months_data = fetch_six_months_data(vessel_name)
+    
+    chart = plot_hull_roughness(vessel_name, performance_data)
+    
+    if not six_months_data.empty:
+        power_loss_pct_ed = six_months_data['hull_rough_power_loss_pct_ed'].iloc[-1]
+        hull_condition = get_hull_condition(power_loss_pct_ed)
+    else:
+        power_loss_pct_ed = None
+        hull_condition = None
+    
+    return chart, power_loss_pct_ed, hull_condition
 
-        from_date, to_date = self.extract_date_range(query)
-        
-        data = fetch_hull_performance_data(vessel_name, engine, from_date, to_date)
-        if not data:
-            return f"I'm sorry, but I couldn't find any hull performance data for the vessel '{vessel_name}' in the specified time range. Could you please check the vessel name and dates, then try again?"
-
-        data_summary = self.generate_data_summary(data)
-        self.chart = self.create_chart(data)
-        analysis = self.analyze_hull_condition(data)
-        
-        llm_analysis = get_llm_analysis(query, vessel_name, data_summary, "hull performance")
-        
-        return f"{llm_analysis}\n\n{analysis}"
-
-    def extract_date_range(self, query):
-        # TODO: Implement logic to extract from_date and to_date from query
-        # For now, we'll use the last 6 months as default
-        to_date = datetime.now()
-        from_date = to_date - timedelta(days=180)
-        return from_date, to_date
-
-    # ... (rest of the methods remain the same)
+def get_hull_condition(power_loss_pct):
+    if power_loss_pct > 25:
+        return "Poor"
+    elif 15 <= power_loss_pct <= 25:
+        return "Average"
+    else:
+        return "Good"
