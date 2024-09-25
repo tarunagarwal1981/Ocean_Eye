@@ -11,12 +11,14 @@ import logging
 logger = logging.getLogger(__name__)
 
 class HullPerformanceAgent(Agent):
+    def __init__(self):
+        self.chart = None
+
     def process_query(self, query: str, engine):
         vessel_name = clean_vessel_name(extract_vessel_name(query))
         if not vessel_name:
             return "I couldn't identify a vessel name in your query. Could you please provide a specific vessel name?"
 
-        # Extract date range if provided
         from_date, to_date = self.extract_date_range(query)
         
         data = fetch_hull_performance_data(vessel_name, engine, from_date, to_date)
@@ -24,7 +26,7 @@ class HullPerformanceAgent(Agent):
             return f"I'm sorry, but I couldn't find any hull performance data for the vessel '{vessel_name}' in the specified time range. Could you please check the vessel name and dates, then try again?"
 
         data_summary = self.generate_data_summary(data)
-        chart = self.create_chart(data)
+        self.chart = self.create_chart(data)
         analysis = self.analyze_hull_condition(data)
         
         llm_analysis = get_llm_analysis(query, vessel_name, data_summary, "hull performance")
@@ -113,7 +115,10 @@ class HullPerformanceAgent(Agent):
         return analysis
 
     def display_charts(self, st):
-        st.pyplot(self.chart)
+        if self.chart is not None:
+            st.pyplot(self.chart)
+        else:
+            st.write("No chart available for hull performance.")
 
     def generate_report_section(self):
-        return f"## Hull Performance Report\n\n{self.analysis}"
+        return "## Hull Performance Report\n\n[Hull performance details here]"
