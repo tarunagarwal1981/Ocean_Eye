@@ -34,14 +34,14 @@ class HullPerformanceAgent(Agent):
         return f"{llm_analysis}\n\n{analysis}"
 
     def extract_date_range(self, query):
-        # Implement logic to extract from_date and to_date from query
+        # TODO: Implement logic to extract from_date and to_date from query
         # For now, we'll use the last 6 months as default
         to_date = datetime.now()
         from_date = to_date - timedelta(days=180)
         return from_date, to_date
 
     def generate_data_summary(self, data):
-        df = pd.DataFrame(data, columns=['report_date', 'hull_roughness_power_loss'])
+        df = pd.DataFrame(data, columns=['vessel_name', 'report_date', 'hull_roughness_power_loss'])
         df['report_date'] = pd.to_datetime(df['report_date'])
         df = df.sort_values('report_date')
         df = df.dropna()
@@ -55,7 +55,7 @@ class HullPerformanceAgent(Agent):
         return summary
 
     def create_chart(self, data):
-        df = pd.DataFrame(data, columns=['report_date', 'hull_roughness_power_loss'])
+        df = pd.DataFrame(data, columns=['vessel_name', 'report_date', 'hull_roughness_power_loss'])
         df['report_date'] = pd.to_datetime(df['report_date'])
         df = df.sort_values('report_date')
         df = df.dropna()
@@ -86,7 +86,7 @@ class HullPerformanceAgent(Agent):
         return fig
 
     def analyze_hull_condition(self, data):
-        df = pd.DataFrame(data, columns=['report_date', 'hull_roughness_power_loss'])
+        df = pd.DataFrame(data, columns=['vessel_name', 'report_date', 'hull_roughness_power_loss'])
         df['report_date'] = pd.to_datetime(df['report_date'])
         df = df.sort_values('report_date')
         df = df.dropna()
