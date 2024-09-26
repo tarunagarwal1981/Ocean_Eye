@@ -27,6 +27,101 @@ Output your response as a JSON object with the following structure:
 }
 """
 
+# LLM Prompts and Few-Shot Examples
+FEW_SHOT_EXAMPLES = """
+Example 1:
+Q: What's the hull performance of the vessel Oceanica Explorer?
+A: I've analyzed the hull performance data for Oceanica Explorer. Here's what I found:
+
+1. Current Excess Power: 8.7%. This means the vessel currently requires 8.7% more power to maintain its speed compared to a clean hull condition.
+2. Fouling Rate: Approximately 0.5% increase in power loss per month over the last 6 months, indicating a moderate level of fouling accumulation.
+3. Hull Condition: Based on the current excess power, the hull condition is considered Average.
+4. Forecasted Hull Cleaning: Scheduled for 2023-11-15. It's important to plan operations around this date to optimize performance.
+5. Performance Impact: The 8.7% excess power requirement translates to approximately 6-7% increased fuel consumption, assuming typical operating conditions.
+
+Recommendations:
+1. Monitor the hull condition closely as you approach the forecasted cleaning date.
+2. **Since the hull condition is Average**, I recommend performing an underwater hull inspection and propeller polishing to validate the fouling rate and adjust the cleaning date if necessary.
+3. Implement operational measures like speed optimization to mitigate the impact of increased power requirements.
+4. After the next hull cleaning, ensure proper data collection to maintain accurate performance tracking.
+
+**Additionally, here's the speed consumption chart and hull performance chart for your reference.**
+
+*Please note: This analysis is as good as the data reported by the vessel. We kindly request you to remind the vessel to report data accurately and periodically. Accurate analysis not only helps reduce the vessel's carbon footprint but also realizes fuel cost savings.*
+
+Example 2:
+Q: Can you provide the speed consumption profile for the vessel Starlight Voyager?
+A: I've analyzed the speed consumption data for Starlight Voyager. Here's what I found:
+
+1. Speed Range: The vessel operates between 10 to 18 knots based on the available data.
+2. Consumption Trend: There's a clear non-linear increase in fuel consumption as speed increases.
+3. Optimal Speed: The most fuel-efficient speed appears to be around 12-13 knots, where the increase in consumption per knot is lowest.
+4. High-Speed Impact: Operating at speeds above 16 knots results in a sharp increase in fuel consumption, potentially over 50% more than at optimal speed.
+5. Loading Conditions: The data shows distinct consumption profiles for laden and ballast conditions, with ballast condition generally showing lower consumption at the same speeds.
+
+Recommendations:
+1. Prioritize operating at speeds between 12-13 knots when possible to maximize fuel efficiency.
+2. For time-sensitive operations, consider the trade-off between increased speed and fuel consumption, especially above 16 knots.
+3. Optimize route planning to take advantage of the more efficient ballast condition where applicable.
+4. Monitor and record speed and consumption data regularly to identify any deviations from this profile, which could indicate performance issues.
+5. Consider conducting a detailed analysis of the economic impact of speed on your specific trade routes to find the optimal balance between speed and efficiency.
+
+**Additionally, here's the speed consumption chart for your reference.**
+
+*Please note: This analysis is as good as the data reported by the vessel. We kindly request you to remind the vessel to report data accurately and periodically. Accurate analysis not only helps reduce the vessel's carbon footprint but also realizes fuel cost savings.*
+
+Guidelines for Analysis:
+- If the user asks about vessel performance or hull performance, always include **both the speed consumption chart and hull performance chart** for reference.
+- If the hull condition is gauged as **Good**, do not recommend any hull cleaning or underwater inspection.
+- If the hull condition is **Average**, recommend performing an underwater hull inspection and propeller polishing.
+- If the hull condition is **Poor**, recommend performing hull cleaning and propeller polishing.
+- After each response, include a polite reminder: *This analysis is as good as the data reported by the vessel. We kindly request you to remind the vessel to report data accurately and periodically. Accurate analysis not only helps reduce the vessel's carbon footprint but also realizes fuel cost savings.*
+
+Now, please answer the following question in a similar style, using the data I provide:
+{user_question}
+
+{data_summary}
+
+Provide a detailed analysis and recommendations based on this data.
+"""
+
+# LLM detailed analysis function
+def get_llm_analysis(query: str, hull_analysis: str, speed_analysis: str, hull_condition: str) -> str:
+    # Prepare the vessel data summary based on hull and speed analysis
+    data_summary = f"Hull Analysis: {hull_analysis}\nSpeed Analysis: {speed_analysis}\nHull Condition: {hull_condition}"
+
+    # LLM prompt including few-shot examples
+    prompt = f"""
+    {FEW_SHOT_EXAMPLES}
+
+    User Question: {query}
+
+    Vessel Data Summary:
+    {data_summary}
+
+    Provide a detailed analysis and recommendations based on this data.
+    """
+
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a vessel performance analysis assistant."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=1000,
+            temperature=0.5
+        )
+
+        return response['choices'][0]['message']['content']
+
+    except Exception as e:
+        st.error(f"Error in LLM analysis: {str(e)}")
+        return "An error occurred during the analysis."
+
+
+
+
 # Function to get the OpenAI API key
 def get_api_key():
     if 'openai' in st.secrets:
@@ -97,7 +192,6 @@ def handle_user_query(query: str):
     
     # Based on the decision, call the appropriate agent
     if llm_decision['decision'] == 'hull_performance':
-        # Unpack 4 values now (analysis, power_loss_pct, hull_condition, hull_chart)
         analysis, power_loss_pct, hull_condition, hull_chart = analyze_hull_performance(vessel_name)
         st.write(f"Hull performance analysis executed for {vessel_name}.")
         st.write(f"Analysis: {analysis}")
@@ -113,18 +207,18 @@ def handle_user_query(query: str):
     
     elif llm_decision['decision'] == 'combined_performance':
         # Call both hull and speed consumption agents and combine the analysis
-        hull_analysis, _, _, hull_chart = analyze_hull_performance(vessel_name)
+        hull_analysis, _, hull_condition, hull_chart = analyze_hull_performance(vessel_name)
         speed_analysis = analyze_speed_consumption(vessel_name)
-        analysis = f"{hull_analysis}\n\n{speed_analysis}"
-        st.write("Both hull performance and speed consumption analysis executed.")
+        
+        # Use the LLM to provide a detailed analysis
+        detailed_analysis = get_llm_analysis(query, hull_analysis, speed_analysis, hull_condition)
+        st.write(detailed_analysis)
     
     else:
         analysis = "The query seems to require general vessel information or is unclear. Please refine the query."
     
-    # Display charts based on the decision
-    display_charts(llm_decision['decision'], vessel_name)
-    
     return analysis
+
 
 
 # Function to display the charts based on the LLM's decision
