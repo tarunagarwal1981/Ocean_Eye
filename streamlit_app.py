@@ -148,6 +148,7 @@ def display_charts(decision: str, vessel_name: str):
         except Exception as e:
             st.error(f"An error occurred while generating the hull performance chart: {str(e)}")
 
+
 # Main function for the Streamlit app
 def main():
     st.title("Advanced Vessel Performance Chatbot (Powered by ChatGPT)")
