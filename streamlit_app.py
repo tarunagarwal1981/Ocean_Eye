@@ -93,22 +93,37 @@ def get_llm_decision(query: str):
     }}
     """
     
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
-        messages=[
-            {"role": "system", "content": "You are a vessel performance analysis assistant."},
-            {"role": "user", "content": prompt}
-        ],
-        max_tokens=300,
-        temperature=0.5
-    )
-    
-    decision_text = response['choices'][0]['message']['content']
-    
-    # Parse the LLM's response into JSON format
-    decision_json = eval(decision_text)  # Convert string to dictionary
-    
-    return decision_json
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a vessel performance analysis assistant."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=300,
+            temperature=0.5
+        )
+        
+        decision_text = response['choices'][0]['message']['content']
+        
+        # Safely parse the LLM's response into JSON format
+        try:
+            decision_json = eval(decision_text)  # Convert string to dictionary
+        except SyntaxError as e:
+            st.warning("Error in LLM response parsing. Please try again or refine your query.")
+            return None
+
+        # Check if the vessel name and decision are present
+        if 'vessel_name' not in decision_json or 'decision' not in decision_json:
+            st.warning("The LLM response is incomplete. Please provide a clearer query.")
+            return None
+
+        return decision_json
+
+    except Exception as e:
+        st.error(f"An error occurred while processing the LLM decision: {e}")
+        return None
+
 
 
 # LLM detailed analysis function
