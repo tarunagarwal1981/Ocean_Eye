@@ -181,6 +181,9 @@ def get_llm_decision(query: str) -> Dict[str, str]:
 
 # Function to handle user query and return analysis
 def handle_user_query(query: str):
+    # Initialize analysis with a default message
+    analysis = "No analysis available. Please check your query."
+
     # Get the decision and vessel name from the LLM (ChatGPT)
     llm_decision = get_llm_decision(query)
     
@@ -192,6 +195,7 @@ def handle_user_query(query: str):
     
     # Based on the decision, call the appropriate agent
     if llm_decision['decision'] == 'hull_performance':
+        # Unpack the values from hull performance analysis
         analysis, power_loss_pct, hull_condition, hull_chart = analyze_hull_performance(vessel_name)
         st.write(f"Hull performance analysis executed for {vessel_name}.")
         st.write(f"Analysis: {analysis}")
@@ -211,12 +215,12 @@ def handle_user_query(query: str):
         speed_analysis = analyze_speed_consumption(vessel_name)
         
         # Use the LLM to provide a detailed analysis
-        detailed_analysis = get_llm_analysis(query, hull_analysis, speed_analysis, hull_condition)
-        st.write(detailed_analysis)
+        analysis = get_llm_analysis(query, hull_analysis, speed_analysis, hull_condition)
+        st.write(analysis)
     
     else:
         analysis = "The query seems to require general vessel information or is unclear. Please refine the query."
-    
+
     return analysis
 
 
