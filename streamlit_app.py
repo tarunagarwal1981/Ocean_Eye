@@ -141,6 +141,8 @@ def get_llm_analysis(query: str, hull_analysis: str, speed_analysis: str, hull_c
 
 # Main function to handle user query
 def handle_user_query(query: str):
+    detailed_analysis = "No detailed analysis available."  # Initialize with a default value
+    
     # Get the decision and vessel name from the LLM (ChatGPT)
     llm_decision = get_llm_decision(query)
     
@@ -159,7 +161,9 @@ def handle_user_query(query: str):
             st.pyplot(hull_chart)
         else:
             st.warning("Hull performance chart is not available for this vessel.")
-    
+        
+        detailed_analysis = analysis  # Update detailed_analysis with the hull analysis
+
     elif llm_decision['decision'] == 'speed_consumption':
         analysis, speed_chart = analyze_speed_consumption(vessel_name)
         st.write(f"{analysis}")  # Display speed analysis
@@ -168,7 +172,9 @@ def handle_user_query(query: str):
             st.pyplot(speed_chart)
         else:
             st.warning("Speed consumption chart is not available for this vessel.")
-    
+        
+        detailed_analysis = analysis  # Update detailed_analysis with the speed analysis
+
     elif llm_decision['decision'] == 'combined_performance':
         # Call both hull and speed consumption agents and combine the analysis
         hull_analysis, _, hull_condition, hull_chart = analyze_hull_performance(vessel_name)
@@ -192,11 +198,13 @@ def handle_user_query(query: str):
             st.pyplot(speed_chart)
         else:
             st.warning("Speed consumption chart is not available for this vessel.")
-    
+
     else:
         st.warning("The query seems to require general vessel information or is unclear. Please refine the query.")
+        detailed_analysis = "No specific analysis could be generated from the provided query."
     
-    return detailed_analysis
+    return detailed_analysis  # Now, this will always return a value
+
 
 
 # Streamlit App Layout
