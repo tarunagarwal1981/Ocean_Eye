@@ -139,6 +139,7 @@ def display_charts(decision: str, vessel_name: str):
     
     if decision in ["hull_performance", "combined_performance"]:
         try:
+            # Unpack the returned values correctly (expecting 4 values)
             hull_analysis, _, _, hull_chart = analyze_hull_performance(vessel_name)
             if hull_chart is not None and hasattr(hull_chart, 'savefig'):
                 st.pyplot(hull_chart)
