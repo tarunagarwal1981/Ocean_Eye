@@ -85,7 +85,11 @@ def get_llm_decision(query: str) -> Dict[str, str]:
         }
 
 # Function to handle user query and return analysis
-def handle_user_query(query: str):
+
+        if hull_chart is not None and hasattr(hull_chart, 'savefig'):
+            st.pyplot(hull_chart)
+        else:
+            st.warning(f"Hull performance chartdef handle_user_query(query: str):
     # Get the decision and vessel name from the LLM (ChatGPT)
     llm_decision = get_llm_decision(query)
     
@@ -93,8 +97,6 @@ def handle_user_query(query: str):
     if not vessel_name:
         return "I couldn't identify a vessel name in your query."
 
-    st.write(f"Extracted Vessel Name: {vessel_name}")
-    
     # Based on the decision, call the appropriate agent
     if llm_decision['decision'] == 'hull_performance':
         # Unpack 4 values now (analysis, power_loss_pct, hull_condition, hull_chart)
@@ -125,6 +127,10 @@ def handle_user_query(query: str):
         combined_analysis = f"{hull_analysis}\n\n{speed_analysis}"
         st.write(combined_analysis)
         
+        # Call the LLM to generate a comprehensive analysis
+        detailed_analysis = get_llm_analysis(query, hull_analysis, speed_analysis, hull_condition)
+        st.write(detailed_analysis)
+        
         # Display both charts
         if hull_chart is not None and hasattr(hull_chart, 'savefig'):
             st.pyplot(hull_chart)
@@ -140,7 +146,8 @@ def handle_user_query(query: str):
         analysis = "The query seems to require general vessel information or is unclear. Please refine the query."
     
     # Optional: Return combined analysis if needed for further display or processing
-    return combined_analysis
+    return detailed_analysis
+
 
 
 
