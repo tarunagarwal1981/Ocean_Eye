@@ -97,7 +97,8 @@ def handle_user_query(query: str):
     
     # Based on the decision, call the appropriate agent
     if llm_decision['decision'] == 'hull_performance':
-        analysis, power_loss_pct, hull_condition = analyze_hull_performance(vessel_name)
+        # Unpack 4 values now (analysis, power_loss_pct, hull_condition, hull_chart)
+        analysis, power_loss_pct, hull_condition, hull_chart = analyze_hull_performance(vessel_name)
         st.write(f"Hull performance analysis executed for {vessel_name}.")
         st.write(f"Analysis: {analysis}")
         
@@ -112,7 +113,7 @@ def handle_user_query(query: str):
     
     elif llm_decision['decision'] == 'combined_performance':
         # Call both hull and speed consumption agents and combine the analysis
-        hull_analysis, _, _ = analyze_hull_performance(vessel_name)
+        hull_analysis, _, _, hull_chart = analyze_hull_performance(vessel_name)
         speed_analysis = analyze_speed_consumption(vessel_name)
         analysis = f"{hull_analysis}\n\n{speed_analysis}"
         st.write("Both hull performance and speed consumption analysis executed.")
@@ -124,6 +125,7 @@ def handle_user_query(query: str):
     display_charts(llm_decision['decision'], vessel_name)
     
     return analysis
+
 
 # Function to display the charts based on the LLM's decision
 def display_charts(decision: str, vessel_name: str):
