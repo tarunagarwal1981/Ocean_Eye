@@ -24,17 +24,20 @@ def analyze_hull_performance(vessel_name: str):
         return f"No valid hull roughness data available for {vessel_name}.", None, None, None
     
     # Plotting the hull roughness power loss over time
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.plot(data['report_date'], data['hull_roughness_power_loss'], color='blue', marker='o', linestyle='-')
-    ax.set_title(f'Hull Roughness Power Loss for {vessel_name}', fontsize=14)
-    ax.set_xlabel('Date', fontsize=12)
-    ax.set_ylabel('Hull Roughness Power Loss (%)', fontsize=12)
-    plt.xticks(rotation=45)
-    plt.tight_layout()
+    try:
+        fig, ax = plt.subplots(figsize=(10, 6))
+        ax.plot(data['report_date'], data['hull_roughness_power_loss'], color='blue', marker='o', linestyle='-')
+        ax.set_title(f'Hull Roughness Power Loss for {vessel_name}', fontsize=14)
+        ax.set_xlabel('Date', fontsize=12)
+        ax.set_ylabel('Hull Roughness Power Loss (%)', fontsize=12)
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+    except Exception as e:
+        return f"Error generating chart for {vessel_name}: {str(e)}", None, None, None
     
     # Compute power loss statistics
     avg_power_loss = data['hull_roughness_power_loss'].mean()
     hull_condition = "Good" if avg_power_loss < 15 else ("Average" if avg_power_loss < 25 else "Poor")
     
-    # Return analysis summary, average power loss, hull condition, and the figure
+    # Always return 4 values (analysis summary, average power loss, hull condition, chart)
     return f"Hull performance for {vessel_name}: Average power loss is {avg_power_loss:.2f}%. Hull condition is {hull_condition}.", avg_power_loss, hull_condition, fig
