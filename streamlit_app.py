@@ -100,31 +100,48 @@ def handle_user_query(query: str):
         # Unpack 4 values now (analysis, power_loss_pct, hull_condition, hull_chart)
         analysis, power_loss_pct, hull_condition, hull_chart = analyze_hull_performance(vessel_name)
         st.write(f"Hull performance analysis executed for {vessel_name}.")
-        st.write(f"Analysis: {analysis}")
+        st.write(f"{analysis}")  # Display only the analysis summary
         
-        if power_loss_pct is None or hull_condition is None:
-            st.warning(f"Hull performance chart is not available for this vessel.")
+        if hull_chart is not None and hasattr(hull_chart, 'savefig'):
+            st.pyplot(hull_chart)
         else:
-            st.success(f"Average Power Loss: {power_loss_pct:.2f}%, Hull Condition: {hull_condition}")
+            st.warning(f"Hull performance chart is not available for this vessel.")
     
     elif llm_decision['decision'] == 'speed_consumption':
-        analysis = analyze_speed_consumption(vessel_name)
-        st.write("Speed consumption analysis executed.")
+        analysis, speed_chart = analyze_speed_consumption(vessel_name)
+        st.write(f"{analysis}")  # Display speed analysis
+        
+        if speed_chart is not None and hasattr(speed_chart, 'savefig'):
+            st.pyplot(speed_chart)
+        else:
+            st.warning(f"Speed consumption chart is not available for this vessel.")
     
     elif llm_decision['decision'] == 'combined_performance':
         # Call both hull and speed consumption agents and combine the analysis
-        hull_analysis, _, _, hull_chart = analyze_hull_performance(vessel_name)
-        speed_analysis = analyze_speed_consumption(vessel_name)
-        analysis = f"{hull_analysis}\n\n{speed_analysis}"
-        st.write("Both hull performance and speed consumption analysis executed.")
+        hull_analysis, _, hull_condition, hull_chart = analyze_hull_performance(vessel_name)
+        speed_analysis, speed_chart = analyze_speed_consumption(vessel_name)
+        
+        # Display combined analysis
+        combined_analysis = f"{hull_analysis}\n\n{speed_analysis}"
+        st.write(combined_analysis)
+        
+        # Display both charts
+        if hull_chart is not None and hasattr(hull_chart, 'savefig'):
+            st.pyplot(hull_chart)
+        else:
+            st.warning(f"Hull performance chart is not available for this vessel.")
+        
+        if speed_chart is not None and hasattr(speed_chart, 'savefig'):
+            st.pyplot(speed_chart)
+        else:
+            st.warning(f"Speed consumption chart is not available for this vessel.")
     
     else:
         analysis = "The query seems to require general vessel information or is unclear. Please refine the query."
     
-    # Display charts based on the decision
-    display_charts(llm_decision['decision'], vessel_name)
-    
-    return analysis
+    # Optional: Return combined analysis if needed for further display or processing
+    return combined_analysis
+
 
 
 # Function to display the charts based on the LLM's decision
