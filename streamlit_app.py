@@ -199,9 +199,6 @@ def handle_user_query(query: str):
         hull_analysis, power_loss_pct, hull_condition, hull_chart = analyze_hull_performance(vessel_name)
         analysis = get_llm_analysis(query, hull_analysis, "", hull_condition)  # LLM provides detailed analysis based on hull data
         
-        #st.write(f"Hull performance analysis executed for {vessel_name}.")
-        st.write(f"Analysis: {analysis}")
-        
         # Display the hull performance chart
         if hull_chart is not None and hasattr(hull_chart, 'savefig'):
             st.pyplot(hull_chart)
@@ -218,9 +215,6 @@ def handle_user_query(query: str):
         speed_analysis, speed_chart = analyze_speed_consumption(vessel_name)
         analysis = get_llm_analysis(query, "", speed_analysis, "")  # LLM provides detailed analysis based on speed data
         
-        st.write("Speed consumption analysis executed.")
-        st.write(f"Analysis: {analysis}")
-        
         # Display the speed consumption chart
         if speed_chart is not None and hasattr(speed_chart, 'savefig'):
             st.pyplot(speed_chart)
@@ -234,9 +228,6 @@ def handle_user_query(query: str):
         
         # Use the LLM to generate a combined analysis based on both hull and speed data
         analysis = get_llm_analysis(query, hull_analysis, speed_analysis, hull_condition)
-        
-        st.write("Both hull performance and speed consumption analysis executed.")
-        #st.write(f"Analysis: {analysis}")
         
         # Display both charts
         if hull_chart is not None and hasattr(hull_chart, 'savefig'):
@@ -252,6 +243,7 @@ def handle_user_query(query: str):
     else:
         analysis = "The query seems to require general vessel information or is unclear. Please refine the query."
     
+    # Return the analysis without printing it
     return analysis
 
 
