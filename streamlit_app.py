@@ -236,7 +236,7 @@ def handle_user_query(query: str):
         analysis = get_llm_analysis(query, hull_analysis, speed_analysis, hull_condition)
         
         st.write("Both hull performance and speed consumption analysis executed.")
-        st.write(f"Analysis: {analysis}")
+        #st.write(f"Analysis: {analysis}")
         
         # Display both charts
         if hull_chart is not None and hasattr(hull_chart, 'savefig'):
