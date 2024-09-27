@@ -199,7 +199,7 @@ def handle_user_query(query: str):
         hull_analysis, power_loss_pct, hull_condition, hull_chart = analyze_hull_performance(vessel_name)
         analysis = get_llm_analysis(query, hull_analysis, "", hull_condition)  # LLM provides detailed analysis based on hull data
         
-        st.write(f"Hull performance analysis executed for {vessel_name}.")
+        #st.write(f"Hull performance analysis executed for {vessel_name}.")
         st.write(f"Analysis: {analysis}")
         
         # Display the hull performance chart
