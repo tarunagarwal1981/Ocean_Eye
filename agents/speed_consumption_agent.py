@@ -16,8 +16,8 @@ def fetch_baseline_data(vessel_name: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     baseline_data = fetch_data_from_db(query)
     
-    laden_baseline = baseline_data[baseline_data['load_type'].str.lower().isin(['Scantling', 'Design'])]
-    ballast_baseline = baseline_data[baseline_data['load_type'].str.lower() == 'Ballast']
+    laden_baseline = baseline_data[baseline_data['load_type'].str.isin(['Scantling', 'Design'])]
+    ballast_baseline = baseline_data[baseline_data['load_type'].str == 'Ballast']
     
     return laden_baseline, ballast_baseline
 
