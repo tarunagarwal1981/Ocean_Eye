@@ -213,6 +213,7 @@ def handle_user_query(query: str):
     elif llm_decision['decision'] == 'speed_consumption':
         # Fetch speed consumption analysis and chart
         speed_analysis, speed_chart = analyze_speed_consumption(vessel_name)
+        st.write(f"Debug Info: {speed_analysis}")  # Display debug information
         analysis = get_llm_analysis(query, "", speed_analysis, "")  # LLM provides detailed analysis based on speed data
         
         # Display the speed consumption chart
@@ -220,7 +221,7 @@ def handle_user_query(query: str):
             st.pyplot(speed_chart)
         else:
             st.warning("Speed consumption chart is not available for this vessel.")
-    
+           
     elif llm_decision['decision'] == 'combined_performance':
         # Fetch both hull and speed consumption analyses and charts
         hull_analysis, _, hull_condition, hull_chart = analyze_hull_performance(vessel_name)
