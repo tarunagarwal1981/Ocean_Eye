@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from datetime import datetime, timedelta
 
-def plot_speed_consumption(vessel_name, data):
+def plot_speed_consumption(vessel_name, data, baseline_data):
     if data.empty:
         print("Warning: Input data is empty.")
         return None, {}
@@ -29,10 +29,11 @@ def plot_speed_consumption(vessel_name, data):
         'ballast': {},
         'overall': {}
     }
-    
-    for ax, condition_data, title, condition in [
-        (ax1, laden_data, 'Laden Condition', 'laden'),
-        (ax2, ballast_data, 'Ballast Condition', 'ballast')
+
+    # Plot baseline data on the chart
+    for ax, condition_data, title, condition, baseline_condition in [
+        (ax1, laden_data, 'Laden Condition', 'laden', baseline_data[baseline_data['load_type'].str.lower().isin(['scantling', 'design'])]),
+        (ax2, ballast_data, 'Ballast Condition', 'ballast', baseline_data[baseline_data['load_type'].str.lower() == 'ballast'])
     ]:
         if not condition_data.empty:
             dates = pd.to_datetime(condition_data['report_date'])
@@ -40,9 +41,24 @@ def plot_speed_consumption(vessel_name, data):
             y = condition_data['normalised_consumption'].values
             
             scatter = ax.scatter(x, y, c=(dates - dates.min()).dt.days, cmap='viridis', s=50, alpha=0.8)
+
+            # Plot baseline data points
+            if not baseline_condition.empty:
+                x_baseline = baseline_condition['speed_kts'].values
+                y_baseline = baseline_condition['me_consumption_mt'].values
+                ax.scatter(x_baseline, y_baseline, color='red', s=100, label='Baseline', zorder=5)  # Larger red dots for baseline
+
+                # Fit an exponential curve to baseline data
+                try:
+                    exp_coeffs = np.polyfit(x_baseline, np.log(y_baseline), 1)
+                    exp_poly = np.poly1d(exp_coeffs)
+                    x_smooth_baseline = np.linspace(x_baseline.min(), x_baseline.max(), 100)
+                    ax.plot(x_smooth_baseline, np.exp(exp_poly(x_smooth_baseline)), color='blue', linestyle='--', label='Baseline Fit', zorder=6)
+                except Exception as e:
+                    print(f"Error fitting exponential curve for {title} baseline: {str(e)}")
             
+            # Fit a polynomial curve to original data
             try:
-                # First-order polynomial fit (catch errors)
                 if len(x) > 1 and len(y) > 1:
                     coeffs = np.polyfit(x, y, 1)
                     poly = np.poly1d(coeffs)
@@ -91,6 +107,7 @@ def plot_speed_consumption(vessel_name, data):
     fig.suptitle(f"Speed vs Consumption - {vessel_name}", fontsize=16)
     plt.subplots_adjust(top=0.93)
     return fig, stats
+
 
 def analyze_speed_consumption(vessel_name: str):
     # SQL query to fetch speed consumption data for the vessel
