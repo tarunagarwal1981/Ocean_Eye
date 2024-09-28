@@ -33,7 +33,7 @@ def fetch_ops_data(vessel_name: str):
     Split the data into laden and ballast based on load_type.
     """
     ops_query = f"""
-    SELECT observed_speed, beaufort_scale, load_type, report_date, vessel_name, normalised_me_consumption
+    SELECT observed_speed, beaufort_scale, load_type, reportdate, vessel_name, normalised_me_consumption
     FROM vessel_performance_summary
     WHERE UPPER(vessel_name) = '{vessel_name.upper()}'
     """
@@ -71,7 +71,7 @@ def plot_speed_consumption(vessel_name, laden_ops, ballast_ops, laden_baseline, 
     # Helper function to plot data and fit curves
     def plot_data(ax, ops_data, baseline_data, title, ops_color='cyan', baseline_color='red'):
         if not ops_data.empty:
-            dates = pd.to_datetime(ops_data['report_date'])
+            dates = pd.to_datetime(ops_data['reportdate'])
             x = ops_data['observed_speed'].values
             y = ops_data['normalised_me_consumption'].values
             
