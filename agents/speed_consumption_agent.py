@@ -4,11 +4,16 @@ import matplotlib.pyplot as plt
 import numpy as np
 from datetime import datetime, timedelta
 
+# Function to plot speed consumption with filtering and additional data points from baseline
 def plot_speed_consumption(vessel_name, data, baseline_data):
     if data.empty:
         print("Warning: Input data is empty.")
         return None, {}
     
+    # Apply filters: Normalised consumption > 5 and Beaufort scale < 5
+    data = data[(data['normalised_consumption'] > 5) & (data['beaufort_scale'] < 5)]
+    
+    # Convert report_date to datetime and filter data from the last 6 months
     data['report_date'] = pd.to_datetime(data['report_date'], errors='coerce')
     today = datetime.today().date()
     six_months_ago = today - timedelta(days=180)
@@ -30,7 +35,7 @@ def plot_speed_consumption(vessel_name, data, baseline_data):
         'overall': {}
     }
 
-    # Plot baseline data on the chart
+    # Plot baseline data on the chart and include additional speed/consumption points
     for ax, condition_data, title, condition, baseline_condition in [
         (ax1, laden_data, 'Laden Condition', 'laden', baseline_data[baseline_data['load_type'].str.lower().isin(['scantling', 'design'])]),
         (ax2, ballast_data, 'Ballast Condition', 'ballast', baseline_data[baseline_data['load_type'].str.lower() == 'ballast'])
@@ -42,13 +47,24 @@ def plot_speed_consumption(vessel_name, data, baseline_data):
             
             scatter = ax.scatter(x, y, c=(dates - dates.min()).dt.days, cmap='viridis', s=50, alpha=0.8)
 
-            # Plot baseline data points
+            # Add extra data points from baseline: 8, 10, 14 speed/consumption points
+            extra_points = pd.DataFrame({
+                'speed': [8, 10, 14],
+                'normalised_consumption': [baseline_condition[baseline_condition['speed_kts'] == 8]['me_consumption_mt'].values[0],
+                                           baseline_condition[baseline_condition['speed_kts'] == 10]['me_consumption_mt'].values[0],
+                                           baseline_condition[baseline_condition['speed_kts'] == 14]['me_consumption_mt'].values[0]]
+            })
+
+            x = np.concatenate([x, extra_points['speed'].values])
+            y = np.concatenate([y, extra_points['normalised_consumption'].values])
+
+            # Plot baseline data points (in red)
             if not baseline_condition.empty:
                 x_baseline = baseline_condition['speed_kts'].values
                 y_baseline = baseline_condition['me_consumption_mt'].values
-                ax.scatter(x_baseline, y_baseline, color='red', s=100, label='Baseline', zorder=5)  # Larger red dots for baseline
+                ax.scatter(x_baseline, y_baseline, color='red', s=100, label='Baseline', zorder=5)  # Red dots for baseline data
 
-                # Fit an exponential curve to baseline data
+                # Fit an exponential curve to the baseline data
                 try:
                     exp_coeffs = np.polyfit(x_baseline, np.log(y_baseline), 1)
                     exp_poly = np.poly1d(exp_coeffs)
@@ -57,28 +73,28 @@ def plot_speed_consumption(vessel_name, data, baseline_data):
                 except Exception as e:
                     print(f"Error fitting exponential curve for {title} baseline: {str(e)}")
             
-            # Fit a polynomial curve to original data
+            # Fit an exponential curve to the modified data
             try:
                 if len(x) > 1 and len(y) > 1:
-                    coeffs = np.polyfit(x, y, 1)
-                    poly = np.poly1d(coeffs)
+                    exp_coeffs = np.polyfit(x, np.log(y), 1)
+                    exp_poly = np.poly1d(exp_coeffs)
                     
-                    # Calculate R-squared
-                    yhat = poly(x)
+                    # Calculate R-squared for the exponential fit
+                    yhat = np.exp(exp_poly(x))
                     ybar = np.sum(y) / len(y)
                     ssreg = np.sum((yhat - ybar)**2)
                     sstot = np.sum((y - ybar)**2)
                     r_squared = ssreg / sstot
                     
-                    # Plot polynomial fit
+                    # Plot exponential fit for the actual data
                     x_smooth = np.linspace(x.min(), x.max(), 100)
-                    ax.plot(x_smooth, poly(x_smooth), 'r-', label=f'Polynomial Fit (R² = {r_squared:.3f})')
+                    ax.plot(x_smooth, np.exp(exp_poly(x_smooth)), 'r-', label=f'Exponential Fit (R² = {r_squared:.3f})')
                     
-                    # Collect statistics
+                    # Collect statistics for the condition
                     stats[condition] = {
                         'speed_range': (x.min(), x.max()),
                         'consumption_range': (y.min(), y.max()),
-                        'slope': coeffs[0],
+                        'exp_fit_coeffs': exp_coeffs,
                         'r_squared': r_squared
                     }
                 else:
@@ -86,7 +102,7 @@ def plot_speed_consumption(vessel_name, data, baseline_data):
                     stats[condition] = {"error": "Insufficient data for fitting"}
                     
             except Exception as e:
-                print(f"Error fitting polynomial curve for {title}: {str(e)}")
+                print(f"Error fitting exponential curve for {title}: {str(e)}")
             
             ax.legend(fontsize=8)
             ax.set_title(title)
@@ -94,7 +110,7 @@ def plot_speed_consumption(vessel_name, data, baseline_data):
             ax.set_ylabel('ME Consumption (mT/d)')
             plt.colorbar(scatter, ax=ax, label="Time Progression (days)")
     
-    # Overall statistics
+    # Overall statistics calculation
     if len(laden_data) > 0 or len(ballast_data) > 0:
         all_speeds = np.concatenate([laden_data['speed'].values, ballast_data['speed'].values])
         all_consumptions = np.concatenate([laden_data['normalised_consumption'].values, ballast_data['normalised_consumption'].values])
@@ -106,13 +122,15 @@ def plot_speed_consumption(vessel_name, data, baseline_data):
     plt.tight_layout()
     fig.suptitle(f"Speed vs Consumption - {vessel_name}", fontsize=16)
     plt.subplots_adjust(top=0.93)
+    
     return fig, stats
 
 
+# Function to analyze the speed consumption for a vessel with added filtering and data points
 def analyze_speed_consumption(vessel_name: str):
     # SQL query to fetch speed consumption data for the vessel
     query = f"""
-    SELECT vessel_name, report_date, speed, normalised_consumption, loading_condition
+    SELECT vessel_name, report_date, speed, normalised_consumption, loading_condition, beaufort_scale
     FROM hull_performance
     WHERE UPPER(vessel_name) = '{vessel_name.upper()}'
     """
