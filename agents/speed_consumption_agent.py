@@ -16,8 +16,8 @@ def fetch_baseline_data(vessel_name: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     baseline_data = fetch_data_from_db(query)
     
-    laden_baseline = baseline_data[baseline_data['load_type'].str.isin(['Scantling', 'Design'])]
-    ballast_baseline = baseline_data[baseline_data['load_type'].str == 'Ballast']
+    laden_baseline = baseline_data[baseline_data['load_type'].isin(['Scantling', 'Design'])]
+    ballast_baseline = baseline_data[baseline_data['load_type'] == 'Ballast']
     
     return laden_baseline, ballast_baseline
 
@@ -39,8 +39,8 @@ def fetch_ops_data(vessel_name: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
     ]
     
     # Split data
-    laden_ops = ops_data[ops_data['load_type'].str.lower() == 'Laden']
-    ballast_ops = ops_data[ops_data['load_type'].str.lower() == 'Ballast']
+    laden_ops = ops_data[ops_data['load_type'] == 'Laden']
+    ballast_ops = ops_data[ops_data['load_type'] == 'Ballast']
     
     return laden_ops, ballast_ops
 
