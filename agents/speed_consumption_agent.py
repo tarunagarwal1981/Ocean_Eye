@@ -16,8 +16,8 @@ def fetch_baseline_data(vessel_name: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     baseline_data = fetch_data_from_db(query)
     
-    laden_baseline = baseline_data[baseline_data['load_type'].str.lower().isin(['scantling', 'design'])]
-    ballast_baseline = baseline_data[baseline_data['load_type'].str.lower() == 'ballast']
+    laden_baseline = baseline_data[baseline_data['load_type'].str.lower().isin(['Scantling', 'Design'])]
+    ballast_baseline = baseline_data[baseline_data['load_type'].str.lower() == 'Ballast']
     
     return laden_baseline, ballast_baseline
 
@@ -26,7 +26,7 @@ def fetch_ops_data(vessel_name: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
     Fetch operational data for a given vessel, apply filters, and split into laden and ballast conditions.
     """
     query = f"""
-    SELECT observed_speed, beaufort_scale, load_type, reportdate, vessel_name, normalised_me_consumption
+    SELECT observed_speed, beaufort_scale, load_type, reportdate, normalised_me_consumption
     FROM vessel_performance_summary
     WHERE UPPER(vessel_name) = '{vessel_name.upper()}'
     """
@@ -39,8 +39,8 @@ def fetch_ops_data(vessel_name: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
     ]
     
     # Split data
-    laden_ops = ops_data[ops_data['load_type'].str.lower() == 'laden']
-    ballast_ops = ops_data[ops_data['load_type'].str.lower() == 'ballast']
+    laden_ops = ops_data[ops_data['load_type'].str.lower() == 'Laden']
+    ballast_ops = ops_data[ops_data['load_type'].str.lower() == 'Ballast']
     
     return laden_ops, ballast_ops
 
