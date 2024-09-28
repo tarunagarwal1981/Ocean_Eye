@@ -4,6 +4,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 from datetime import datetime, timedelta
 
+# Set non-interactive backend for Matplotlib
+import matplotlib
+matplotlib.use('Agg')
+
 # Function to fetch baseline data
 def fetch_baseline_data(vessel_name: str):
     """
@@ -53,6 +57,9 @@ def fetch_ops_data(vessel_name: str):
     ops_data['reportdate'] = pd.to_datetime(ops_data['reportdate'], errors='coerce')
     ops_data['observed_speed'] = pd.to_numeric(ops_data['observed_speed'], errors='coerce')
     ops_data['normalised_me_consumption'] = pd.to_numeric(ops_data['normalised_me_consumption'], errors='coerce')
+    
+    # Remove NaN values
+    ops_data = ops_data.dropna(subset=['observed_speed', 'normalised_me_consumption'])
     
     # Split the data into laden and ballast based on load_type
     laden_ops_data = ops_data[ops_data['load_type'].str.lower() == 'laden']
@@ -120,6 +127,7 @@ def plot_speed_consumption(vessel_name, laden_ops, ballast_ops, laden_baseline, 
                 ax.set_xlabel('Speed (knots)')
                 ax.set_ylabel('ME Consumption (mT/d)')
                 plt.colorbar(scatter, ax=ax, label="Time Progression (days)")
+                ax.autoscale()  # Ensure all data points are visible
         else:
             print(f"Warning: Operational data is empty for {title}.")
 
@@ -151,7 +159,11 @@ def analyze_speed_consumption(vessel_name: str):
     laden_ops_data = add_baseline_points(laden_ops_data, laden_baseline)
     ballast_ops_data = add_baseline_points(ballast_ops_data, ballast_baseline)
     
+    # Check if we have data to plot
+    if laden_ops_data.empty and ballast_ops_data.empty:
+        return f"No operational data available for plotting for {vessel_name}", None
+
     # Generate the plot
     fig = plot_speed_consumption(vessel_name, laden_ops_data, ballast_ops_data, laden_baseline, ballast_baseline)
 
-    return f"Speed consumption for {vessel_name} executed.", fig
+    return f"Speed consumption analysis for {vessel_name} executed.", fig
