@@ -18,10 +18,14 @@ def fetch_baseline_data(vessel_name: str):
     
     # Fetch baseline data from the database
     baseline_data = fetch_data_from_db(baseline_query)
+    print(f"Fetched baseline data for {vessel_name}: {baseline_data.shape}")  # Debugging output
     
     # Split baseline data into laden and ballast
     laden_baseline = baseline_data[baseline_data['load_type'].str.lower().isin(['scantling', 'design'])]
     ballast_baseline = baseline_data[baseline_data['load_type'].str.lower() == 'ballast']
+    
+    print(f"Laden baseline data: {laden_baseline.shape}")
+    print(f"Ballast baseline data: {ballast_baseline.shape}")
     
     return laden_baseline, ballast_baseline
 
@@ -43,13 +47,19 @@ def fetch_ops_data(vessel_name: str):
     
     # Filter out rows where beaufort_scale >= 4 or normalised_me_consumption <= 5
     ops_data = ops_data[(ops_data['beaufort_scale'] < 4) & (ops_data['normalised_me_consumption'] > 5)]
+    print(f"Ops data after filtering: {ops_data.shape}")  # Debugging output
     
-    # Print data sizes for debugging
-    print(f"Ops data size after filtering: {ops_data.shape}")
-
+    # Ensure that the data types are correct
+    ops_data['reportdate'] = pd.to_datetime(ops_data['reportdate'], errors='coerce')
+    ops_data['observed_speed'] = pd.to_numeric(ops_data['observed_speed'], errors='coerce')
+    ops_data['normalised_me_consumption'] = pd.to_numeric(ops_data['normalised_me_consumption'], errors='coerce')
+    
     # Split the data into laden and ballast based on load_type
     laden_ops_data = ops_data[ops_data['load_type'].str.lower() == 'laden']
     ballast_ops_data = ops_data[ops_data['load_type'].str.lower() == 'ballast']
+    
+    print(f"Laden ops data: {laden_ops_data.shape}")
+    print(f"Ballast ops data: {ballast_ops_data.shape}")
     
     return laden_ops_data, ballast_ops_data
 
@@ -59,6 +69,7 @@ def add_baseline_points(ops_data, baseline_data, speeds=[8, 10, 14]):
     Add baseline points for speeds 8, 10, and 14 to the ops data.
     """
     added_points = baseline_data[baseline_data['speed_kts'].isin(speeds)]
+    print(f"Adding {added_points.shape[0]} baseline points.")  # Debugging output
     if not added_points.empty:
         ops_data = pd.concat([ops_data, added_points[['speed_kts', 'me_consumption_mt']]], ignore_index=True)
         ops_data.rename(columns={'speed_kts': 'observed_speed', 'me_consumption_mt': 'normalised_me_consumption'}, inplace=True)
@@ -75,43 +86,40 @@ def plot_speed_consumption(vessel_name, laden_ops, ballast_ops, laden_baseline, 
     def plot_data(ax, ops_data, baseline_data, title, ops_color='cyan', baseline_color='red'):
         if not ops_data.empty:
             ops_data = ops_data.dropna(subset=['reportdate', 'observed_speed', 'normalised_me_consumption'])
-            print(f"{title} ops data size: {ops_data.shape}")  # Print ops data size for debugging
+            print(f"{title} ops data size after dropping NaNs: {ops_data.shape}")  # Debugging output
             if not ops_data.empty:
                 dates = pd.to_datetime(ops_data['reportdate'])
                 x = ops_data['observed_speed'].values
                 y = ops_data['normalised_me_consumption'].values
 
-                # Ensure dates, x, and y are aligned in size
-                if len(dates) == len(x) == len(y):
-                    scatter = ax.scatter(x, y, c=(dates - dates.min()).dt.days, cmap='viridis', s=50, alpha=0.8, label='Ops Data')
+                # Scatter plot for ops data with gradient color based on time progression
+                scatter = ax.scatter(x, y, c=(dates - dates.min()).dt.days, cmap='viridis', s=50, alpha=0.8, label='Ops Data')
 
-                    # Exponential fit for ops data
-                    if len(x) > 1:
-                        exp_coeffs = np.polyfit(x, np.log(y), 1)
-                        exp_poly = np.poly1d(exp_coeffs)
-                        x_smooth = np.linspace(x.min(), x.max(), 100)
-                        ax.plot(x_smooth, np.exp(exp_poly(x_smooth)), color=ops_color, linestyle='-', label='Ops Best Fit')
+                # Exponential fit for ops data
+                if len(x) > 1:
+                    exp_coeffs = np.polyfit(x, np.log(y), 1)
+                    exp_poly = np.poly1d(exp_coeffs)
+                    x_smooth = np.linspace(x.min(), x.max(), 100)
+                    ax.plot(x_smooth, np.exp(exp_poly(x_smooth)), color=ops_color, linestyle='-', label='Ops Best Fit')
 
-                    # Plot baseline data
-                    if not baseline_data.empty:
-                        x_baseline = baseline_data['speed_kts'].values
-                        y_baseline = baseline_data['me_consumption_mt'].values
-                        ax.scatter(x_baseline, y_baseline, color=baseline_color, s=100, label='Baseline', zorder=5)
+                # Plot baseline data
+                if not baseline_data.empty:
+                    x_baseline = baseline_data['speed_kts'].values
+                    y_baseline = baseline_data['me_consumption_mt'].values
+                    ax.scatter(x_baseline, y_baseline, color=baseline_color, s=100, label='Baseline', zorder=5)
 
-                        # Exponential fit for baseline data
-                        if len(x_baseline) > 1:
-                            exp_coeffs_base = np.polyfit(x_baseline, np.log(y_baseline), 1)
-                            exp_poly_base = np.poly1d(exp_coeffs_base)
-                            x_smooth_base = np.linspace(x_baseline.min(), x_baseline.max(), 100)
-                            ax.plot(x_smooth_base, np.exp(exp_poly_base(x_smooth_base)), color='blue', linestyle='--', label='Baseline Best Fit')
+                    # Exponential fit for baseline data
+                    if len(x_baseline) > 1:
+                        exp_coeffs_base = np.polyfit(x_baseline, np.log(y_baseline), 1)
+                        exp_poly_base = np.poly1d(exp_coeffs_base)
+                        x_smooth_base = np.linspace(x_baseline.min(), x_baseline.max(), 100)
+                        ax.plot(x_smooth_base, np.exp(exp_poly_base(x_smooth_base)), color='blue', linestyle='--', label='Baseline Best Fit')
 
-                    ax.legend(fontsize=8)
-                    ax.set_title(title)
-                    ax.set_xlabel('Speed (knots)')
-                    ax.set_ylabel('ME Consumption (mT/d)')
-                    plt.colorbar(scatter, ax=ax, label="Time Progression (days)")
-                else:
-                    print(f"Error: Length mismatch between dates, x, and y arrays in {title}.")
+                ax.legend(fontsize=8)
+                ax.set_title(title)
+                ax.set_xlabel('Speed (knots)')
+                ax.set_ylabel('ME Consumption (mT/d)')
+                plt.colorbar(scatter, ax=ax, label="Time Progression (days)")
         else:
             print(f"Warning: Operational data is empty for {title}.")
 
