@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from datetime import datetime, timedelta
 
-
+# Function to fetch baseline data
 def fetch_baseline_data(vessel_name: str):
     """
     Fetch baseline data for a given vessel from the vessel_performance_model_data table.
@@ -25,7 +25,7 @@ def fetch_baseline_data(vessel_name: str):
     
     return laden_baseline, ballast_baseline
 
-
+# Function to fetch operational data
 def fetch_ops_data(vessel_name: str):
     """
     Fetch operational (ops) data for the vessel from the vessel_performance_summary table.
@@ -50,7 +50,7 @@ def fetch_ops_data(vessel_name: str):
     
     return laden_ops_data, ballast_ops_data
 
-
+# Function to add baseline points to operational data
 def add_baseline_points(ops_data, baseline_data, speeds=[8, 10, 14]):
     """
     Add baseline points for speeds 8, 10, and 14 to the ops data.
@@ -61,7 +61,7 @@ def add_baseline_points(ops_data, baseline_data, speeds=[8, 10, 14]):
         ops_data.rename(columns={'speed_kts': 'observed_speed', 'me_consumption_mt': 'normalised_me_consumption'}, inplace=True)
     return ops_data
 
-
+# Function to plot speed consumption data
 def plot_speed_consumption(vessel_name, laden_ops, ballast_ops, laden_baseline, ballast_baseline):
     """
     Plot both ops data and baseline data with exponential best-fit curves for both.
@@ -71,39 +71,45 @@ def plot_speed_consumption(vessel_name, laden_ops, ballast_ops, laden_baseline, 
     # Helper function to plot data and fit curves
     def plot_data(ax, ops_data, baseline_data, title, ops_color='cyan', baseline_color='red'):
         if not ops_data.empty:
-            dates = pd.to_datetime(ops_data['reportdate'])
-            x = ops_data['observed_speed'].values
-            y = ops_data['normalised_me_consumption'].values
-            
-            # Scatter plot for ops data with gradient color based on time progression
-            scatter = ax.scatter(x, y, c=(dates - dates.min()).dt.days, cmap='viridis', s=50, alpha=0.8, label='Ops Data')
-            
-            # Exponential fit for ops data
-            if len(x) > 1:
-                exp_coeffs = np.polyfit(x, np.log(y), 1)
-                exp_poly = np.poly1d(exp_coeffs)
-                x_smooth = np.linspace(x.min(), x.max(), 100)
-                ax.plot(x_smooth, np.exp(exp_poly(x_smooth)), color=ops_color, linestyle='-', label='Ops Best Fit')
+            ops_data = ops_data.dropna(subset=['reportdate', 'observed_speed', 'normalised_me_consumption'])
+            if not ops_data.empty:
+                dates = pd.to_datetime(ops_data['reportdate'])
+                x = ops_data['observed_speed'].values
+                y = ops_data['normalised_me_consumption'].values
 
-            # Plot baseline data
-            if not baseline_data.empty:
-                x_baseline = baseline_data['speed_kts'].values
-                y_baseline = baseline_data['me_consumption_mt'].values
-                ax.scatter(x_baseline, y_baseline, color=baseline_color, s=100, label='Baseline', zorder=5)
-                
-                # Exponential fit for baseline data
-                if len(x_baseline) > 1:
-                    exp_coeffs_base = np.polyfit(x_baseline, np.log(y_baseline), 1)
-                    exp_poly_base = np.poly1d(exp_coeffs_base)
-                    x_smooth_base = np.linspace(x_baseline.min(), x_baseline.max(), 100)
-                    ax.plot(x_smooth_base, np.exp(exp_poly_base(x_smooth_base)), color='blue', linestyle='--', label='Baseline Best Fit')
+                # Ensure dates, x, and y are aligned in size
+                if len(dates) == len(x) == len(y):
+                    scatter = ax.scatter(x, y, c=(dates - dates.min()).dt.days, cmap='viridis', s=50, alpha=0.8, label='Ops Data')
 
-            # Set labels and legend
-            ax.legend(fontsize=8)
-            ax.set_title(title)
-            ax.set_xlabel('Speed (knots)')
-            ax.set_ylabel('ME Consumption (mT/d)')
-            plt.colorbar(scatter, ax=ax, label="Time Progression (days)")
+                    # Exponential fit for ops data
+                    if len(x) > 1:
+                        exp_coeffs = np.polyfit(x, np.log(y), 1)
+                        exp_poly = np.poly1d(exp_coeffs)
+                        x_smooth = np.linspace(x.min(), x.max(), 100)
+                        ax.plot(x_smooth, np.exp(exp_poly(x_smooth)), color=ops_color, linestyle='-', label='Ops Best Fit')
+
+                    # Plot baseline data
+                    if not baseline_data.empty:
+                        x_baseline = baseline_data['speed_kts'].values
+                        y_baseline = baseline_data['me_consumption_mt'].values
+                        ax.scatter(x_baseline, y_baseline, color=baseline_color, s=100, label='Baseline', zorder=5)
+
+                        # Exponential fit for baseline data
+                        if len(x_baseline) > 1:
+                            exp_coeffs_base = np.polyfit(x_baseline, np.log(y_baseline), 1)
+                            exp_poly_base = np.poly1d(exp_coeffs_base)
+                            x_smooth_base = np.linspace(x_baseline.min(), x_baseline.max(), 100)
+                            ax.plot(x_smooth_base, np.exp(exp_poly_base(x_smooth_base)), color='blue', linestyle='--', label='Baseline Best Fit')
+
+                    ax.legend(fontsize=8)
+                    ax.set_title(title)
+                    ax.set_xlabel('Speed (knots)')
+                    ax.set_ylabel('ME Consumption (mT/d)')
+                    plt.colorbar(scatter, ax=ax, label="Time Progression (days)")
+                else:
+                    print(f"Error: Length mismatch between dates, x, and y arrays in {title}.")
+        else:
+            print(f"Warning: Operational data is empty for {title}.")
 
     # Plot laden data and baseline
     plot_data(ax1, laden_ops, laden_baseline, 'Laden Condition')
@@ -117,7 +123,7 @@ def plot_speed_consumption(vessel_name, laden_ops, ballast_ops, laden_baseline, 
     
     return fig
 
-
+# Main function to analyze speed consumption
 def analyze_speed_consumption(vessel_name: str):
     """
     Main function to analyze speed consumption, fetch baseline and ops data,
