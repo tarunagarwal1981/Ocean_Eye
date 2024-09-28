@@ -117,15 +117,23 @@ def analyze_speed_consumption(vessel_name: str):
     WHERE UPPER(vessel_name) = '{vessel_name.upper()}'
     """
     
+    # SQL query to fetch baseline data from the vessel_performance_model_data table
+    baseline_query = f"""
+    SELECT speed_kts, me_consumption_mt, load_type
+    FROM vessel_performance_model_data
+    WHERE UPPER(vessel_name) = '{vessel_name.upper()}'
+    """
+    
     # Fetch data from the database
     data = fetch_data_from_db(query)
+    baseline_data = fetch_data_from_db(baseline_query)
     
     # Check if data was fetched successfully
     if data.empty:
         return f"No speed consumption data available for {vessel_name}.", None
     
-    # Call the plot_speed_consumption function to generate the chart
-    fig, stats = plot_speed_consumption(vessel_name, data)
+    # Call the plot_speed_consumption function to generate the chart with baseline data
+    fig, stats = plot_speed_consumption(vessel_name, data, baseline_data)
     
     # Return the analysis summary and the chart
     return f"Speed consumption for {vessel_name} executed.", fig
