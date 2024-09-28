@@ -44,6 +44,9 @@ def fetch_ops_data(vessel_name: str):
     # Filter out rows where beaufort_scale >= 4 or normalised_me_consumption <= 5
     ops_data = ops_data[(ops_data['beaufort_scale'] < 4) & (ops_data['normalised_me_consumption'] > 5)]
     
+    # Print data sizes for debugging
+    print(f"Ops data size after filtering: {ops_data.shape}")
+
     # Split the data into laden and ballast based on load_type
     laden_ops_data = ops_data[ops_data['load_type'].str.lower() == 'laden']
     ballast_ops_data = ops_data[ops_data['load_type'].str.lower() == 'ballast']
@@ -72,6 +75,7 @@ def plot_speed_consumption(vessel_name, laden_ops, ballast_ops, laden_baseline, 
     def plot_data(ax, ops_data, baseline_data, title, ops_color='cyan', baseline_color='red'):
         if not ops_data.empty:
             ops_data = ops_data.dropna(subset=['reportdate', 'observed_speed', 'normalised_me_consumption'])
+            print(f"{title} ops data size: {ops_data.shape}")  # Print ops data size for debugging
             if not ops_data.empty:
                 dates = pd.to_datetime(ops_data['reportdate'])
                 x = ops_data['observed_speed'].values
