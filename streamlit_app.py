@@ -52,6 +52,15 @@ Q: Show me the detailed performance and charts for Starlight Voyager.
     "response_type": "detailed",
     "explanation": "The query specifically asks for detailed performance and charts, so a more comprehensive response is needed."
 }
+
+Example 2:
+Q: Show me the vessel performance and charts for Starlight Voyager.
+{
+    "vessel_name": "Starlight Voyager",
+    "decision": "combined_performance",
+    "response_type": "detailed",
+    "explanation": "The query specifically asks for detailed performance and charts, so a more comprehensive response is needed."
+}
 """
 
 
