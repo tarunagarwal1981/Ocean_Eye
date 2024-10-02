@@ -248,18 +248,16 @@ def get_llm_decision(query: str) -> Dict[str, str]:
 def handle_user_query(query: str):
     # Get the decision and vessel name from the LLM (ChatGPT)
     llm_decision = get_llm_decision(query)
-    
-    # Debugging: Print or log the LLM decision to check the output
-    st.write(f"LLM Decision: {llm_decision}")
-    
+
+    # Safeguard: Ensure the response contains vessel_name and decision
     vessel_name = llm_decision.get("vessel_name", "")
     answer_type = llm_decision.get("answer_type", "concise")
     decision_type = llm_decision.get("decision", "general_info")
-    
+
     # Check if the vessel name was extracted correctly
     if not vessel_name:
         return "I couldn't identify a vessel name in your query."
-    
+
     # Store the vessel name and decision type in session state for follow-up queries
     st.session_state.vessel_name = vessel_name
     st.session_state.decision_type = decision_type
@@ -283,9 +281,11 @@ def handle_user_query(query: str):
             analysis = "The query seems to require general vessel information or is unclear. Please refine the query."
 
     elif answer_type == "detailed":
+        # Handle detailed requests
         handle_more_information()  # Provide detailed analysis and charts if requested
     
     return analysis
+
 
 # Function to handle follow-up queries asking for more information
 def handle_more_information():
@@ -315,7 +315,6 @@ def handle_more_information():
         st.write(detailed_analysis)
     else:
         st.warning("No previous context found. Please provide a new query.")
-
 
 # Function to display the charts based on the LLM's decision
 def display_charts(decision: str, vessel_name: str):
@@ -358,7 +357,7 @@ def main():
             st.markdown(prompt)
 
         # Check if it's a follow-up request like "show charts" or "give me more information"
-        if re.search(r"(more information|give me charts|detailed)", prompt, re.IGNORECASE):
+        if re.search(r"(more information|give me charts|detailed|yes)", prompt, re.IGNORECASE):
             handle_more_information()
         else:
             # Handle initial query
@@ -366,6 +365,7 @@ def main():
             st.session_state.messages.append({"role": "assistant", "content": analysis})
             with st.chat_message("assistant"):
                 st.markdown(analysis)
+
 # Run the app
 if __name__ == "__main__":
     main()
