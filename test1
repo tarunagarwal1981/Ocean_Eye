@@ -1,232 +1,33 @@
 import streamlit as st
 import openai
 import os
-import json
 import pandas as pd
-import numpy as np
-import matplotlib.pyplot as plt
-import anthropic
-from datetime import datetime, timedelta
-from typing import Dict, Any, Tuple
-from utils.database_utils import fetch_data_from_db
-from utils.nlp_utils import extract_vessel_name, clean_vessel_name
-from scipy.optimize import curve_fit
-from anthropic import Anthropic, HUMAN_PROMPT, AI_PROMPT
+import json
+import re
+from typing import Dict
+from agents.hull_performance_agent import analyze_hull_performance
+from agents.speed_consumption_agent import analyze_speed_consumption
+from utils.nlp_utils import clean_vessel_name
 
+# LLM Prompts
+DECISION_PROMPT = """
+You are an AI assistant specialized in vessel performance analysis. The user will ask a query related to vessel performance. Based on the user's query, do two things:
+1. Extract only the vessel name from the query. The vessel name may appear after the word 'of' (e.g., 'hull performance of Trammo Marycam' => 'Trammo Marycam').
+2. Determine what type of performance information is needed to answer the user's query. The options are:
+   - Hull performance
+   - Speed consumption
+   - Combined performance (both hull and speed)
+   - General vessel information
 
-# Initialize OpenAI API
-#def get_api_key():
-#    if 'openai' in st.secrets:
-#        return st.secrets['openai']['api_key']
-#    api_key = os.getenv('OPENAI_API_KEY')
-#    if api_key is None:
-#        raise ValueError("API key not found. Set OPENAI_API_KEY as an environment variable.")
-#    return api_key
+Output your response as a JSON object with the following structure:
+{
+    "vessel_name": "<vessel_name>",
+    "decision": "hull_performance" or "speed_consumption" or "combined_performance" or "general_info",
+    "explanation": "Brief explanation of why you made this decision"
+}
+"""
 
-#openai.api_key = get_api_key()
-
-def get_api_key():
-    if 'anthropic' in st.secrets:
-        return st.secrets['anthropic']['api_key']
-    api_key = os.getenv('ANTHROPIC_API_KEY')
-    if api_key is None:
-        raise ValueError("API key not found. Set ANTHROPIC_API_KEY as an environment variable.")
-    return api_key
-
-client = anthropic.Anthropic(api_key=get_api_key())
-
-# Hull Performance Functions
-def fetch_performance_data(vessel_name):
-    query = f"""
-    SELECT vessel_name, report_date, hull_roughness_power_loss
-    FROM hull_performance
-    WHERE UPPER(vessel_name) = '{vessel_name.upper()}'
-    """
-    return fetch_data_from_db(query)
-
-def fetch_six_months_data(vessel_name):
-    query = f"""
-    SELECT vessel_name, hull_rough_power_loss_pct_ed
-    FROM hull_performance_six_months
-    WHERE UPPER(vessel_name) = '{vessel_name.upper()}'
-    """
-    return fetch_data_from_db(query)
-
-def plot_hull_roughness(vessel_name, data):
-    if data.empty:
-        return None
-    
-    data['report_date'] = pd.to_datetime(data['report_date'], errors='coerce')
-    today = datetime.today().date()
-    six_months_ago = today - timedelta(days=180)
-    
-    filtered_data = data[(data['report_date'].dt.date >= six_months_ago) & (data['hull_roughness_power_loss'].notnull())]
-    
-    if filtered_data.empty:
-        return None
-    
-    dates = pd.to_datetime(filtered_data['report_date'])
-    power_loss = filtered_data['hull_roughness_power_loss']
-    
-    x_numeric = (dates - dates.min()).dt.days
-    
-    fig, ax = plt.subplots(figsize=(10, 6))
-    ax.scatter(dates, power_loss, c='cyan', edgecolors='white', s=50, alpha=0.8)
-    
-    coeffs = np.polyfit(x_numeric, power_loss, 1)
-    best_fit_line = np.poly1d(coeffs)
-    
-    x_smooth = np.linspace(x_numeric.min(), x_numeric.max(), 200)
-    ax.plot(dates.min() + pd.to_timedelta(x_smooth, unit='D'), best_fit_line(x_smooth), color='#00FF00', linewidth=2, linestyle='-', label='Best Fit Line')
-    
-    ax.set_facecolor('#000C20')
-    fig.patch.set_facecolor('#000C20')
-    
-    ax.set_xlabel('Dates', fontsize=12, color='white')
-    ax.set_ylabel('Excess Power %', fontsize=12, color='white')
-    ax.set_title(f'Hull Roughness Power Loss - {vessel_name}', fontsize=14, color='white')
-    
-    ax.xaxis.set_major_formatter(plt.matplotlib.dates.DateFormatter('%b'))
-    ax.xaxis.set_major_locator(plt.matplotlib.dates.MonthLocator())
-    
-    plt.xticks(color='white', fontsize=10)
-    plt.yticks(color='white', fontsize=10)
-    
-    ax.set_xlim(dates.min(), dates.max())
-    ax.set_ylim(power_loss.min() - 0.05 * (power_loss.max() - power_loss.min()), power_loss.max() + 0.05 * (power_loss.max() - power_loss.min()))
-    
-    ax.legend(loc='upper left', fontsize=10, frameon=False, facecolor='none', edgecolor='none', labelcolor='white')
-    
-    return fig
-
-def get_hull_condition(power_loss_pct):
-    if power_loss_pct > 25:
-        return "Poor"
-    elif 15 <= power_loss_pct <= 25:
-        return "Average"
-    else:
-        return "Good"
-
-def analyze_hull_performance(vessel_name):
-    performance_data = fetch_performance_data(vessel_name)
-    six_months_data = fetch_six_months_data(vessel_name)
-    
-    chart = plot_hull_roughness(vessel_name, performance_data)
-    
-    if not six_months_data.empty:
-        power_loss_pct_ed = six_months_data['hull_rough_power_loss_pct_ed'].iloc[-1]
-        hull_condition = get_hull_condition(power_loss_pct_ed)
-    else:
-        power_loss_pct_ed = None
-        hull_condition = None
-    
-    return chart, power_loss_pct_ed, hull_condition
-
-# Speed Consumption Functions
-def fetch_speed_consumption_data(vessel_name):
-    query = f"""
-    SELECT vessel_name, report_date, speed, normalised_consumption, loading_condition
-    FROM hull_performance
-    WHERE UPPER(vessel_name) = '{vessel_name.upper()}'
-    """
-    return fetch_data_from_db(query)
-
-def plot_speed_consumption(vessel_name, data):
-    if data.empty:
-        print("Warning: Input data is empty.")
-        return None, {}
-    
-    data['report_date'] = pd.to_datetime(data['report_date'], errors='coerce')
-    today = datetime.today().date()
-    six_months_ago = today - timedelta(days=180)
-    
-    filtered_data = data[(data['report_date'].dt.date >= six_months_ago)]
-    
-    if filtered_data.empty:
-        print("Warning: Filtered data is empty.")
-        return None, {}
-    
-    laden_data = filtered_data[filtered_data['loading_condition'].str.lower() == 'laden']
-    ballast_data = filtered_data[filtered_data['loading_condition'].str.lower() == 'ballast']
-    
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 8))
-    
-    stats = {
-        'laden': {},
-        'ballast': {},
-        'overall': {}
-    }
-    
-    for ax, condition_data, title, condition in [
-        (ax1, laden_data, 'Laden Condition', 'laden'),
-        (ax2, ballast_data, 'Ballast Condition', 'ballast')
-    ]:
-        if not condition_data.empty:
-            dates = pd.to_datetime(condition_data['report_date'])
-            x = condition_data['speed'].values
-            y = condition_data['normalised_consumption'].values
-            
-            scatter = ax.scatter(x, y, c=(dates - dates.min()).dt.days, cmap='viridis', s=50, alpha=0.8)
-            
-            try:
-                # First-order polynomial fit
-                coeffs = np.polyfit(x, y, 1)
-                poly = np.poly1d(coeffs)
-                
-                # Calculate R-squared
-                yhat = poly(x)
-                ybar = np.sum(y) / len(y)
-                ssreg = np.sum((yhat - ybar)**2)
-                sstot = np.sum((y - ybar)**2)
-                r_squared = ssreg / sstot
-
-                # Plot polynomial fit
-                x_smooth = np.linspace(x.min(), x.max(), 100)
-                ax.plot(x_smooth, poly(x_smooth), 'r-', label=f'Polynomial Fit (R² = {r_squared:.3f})')
-                
-                # Collect statistics
-                stats[condition] = {
-                    'speed_range': (x.min(), x.max()),
-                    'consumption_range': (y.min(), y.max()),
-                    'slope': coeffs[0],
-                    'r_squared': r_squared
-                }
-                
-            except Exception as e:
-                print(f"Error fitting polynomial curve for {title}: {str(e)}")
-            
-            ax.legend(fontsize=8)
-            ax.set_title(title)
-            ax.set_xlabel('Speed (knots)')
-            ax.set_ylabel('ME Consumption (mT/d)')
-            plt.colorbar(scatter, ax=ax, label="Time Progression (days)")
-    
-    # Overall statistics
-    all_speeds = np.concatenate([laden_data['speed'].values, ballast_data['speed'].values])
-    all_consumptions = np.concatenate([laden_data['normalised_consumption'].values, ballast_data['normalised_consumption'].values])
-    stats['overall'] = {
-        'speed_range': (all_speeds.min(), all_speeds.max()),
-        'consumption_range': (all_consumptions.min(), all_consumptions.max())
-    }
-    
-    plt.tight_layout()
-    fig.suptitle(f"Speed vs Consumption - {vessel_name}", fontsize=16)
-    plt.subplots_adjust(top=0.93)
-    return fig, stats
-    
-def analyze_speed_consumption(vessel_name):
-    try:
-        speed_data = fetch_speed_consumption_data(vessel_name)
-        if speed_data.empty:
-            print(f"No speed consumption data available for {vessel_name}")
-            return None, {}
-        chart, stats = plot_speed_consumption(vessel_name, speed_data)
-        return chart, stats
-    except Exception as e:
-        print(f"Error in analyze_speed_consumption: {str(e)}")
-        return None, {}
-
-# LLM Prompts and Functions
+# LLM Prompts and Few-Shot Examples
 FEW_SHOT_EXAMPLES = """
 Example 1:
 Q: What's the hull performance of the vessel Oceanica Explorer?
@@ -284,125 +85,197 @@ Now, please answer the following question in a similar style, using the data I p
 Provide a detailed analysis and recommendations based on this data.
 """
 
-DECISION_PROMPT = """
-You are an AI assistant specialized in vessel performance analysis. Your task is to determine what type of information is needed to answer the user's query. The options are:
+# LLM detailed analysis function
+def get_llm_analysis(query: str, hull_analysis: str, speed_analysis: str, hull_condition: str) -> str:
+    # Prepare the vessel data summary based on hull and speed analysis
+    data_summary = f"Hull Analysis: {hull_analysis}\nSpeed Analysis: {speed_analysis}\nHull Condition: {hull_condition}"
 
-1. Hull performance
-2. Speed consumption
-3. Combined performance (both hull and speed)
-4. General vessel information
+    # LLM prompt including few-shot examples
+    prompt = f"""
+    {FEW_SHOT_EXAMPLES}
 
-Based on the user's query, output your decision as a JSON object with the following structure:
-{
-    "decision": "hull_performance" or "speed_consumption" or "combined_performance" or "general_info",
-    "explanation": "Brief explanation of why you made this decision"
-}
+    User Question: {query}
 
-Respond only with the JSON object, no other text.
-"""
+    Vessel Data Summary:
+    {data_summary}
 
-def get_llm_decision(query: str) -> Dict[str, str]:
+    Provide a detailed analysis and recommendations based on this data.
+    """
+
     try:
-        prompt = f"{HUMAN_PROMPT} {DECISION_PROMPT}\n\nUser Query: {query}\n\nDecision:{AI_PROMPT}"
-        response = client.completions.create(
-            model="claude-2",
-            prompt=prompt,
-            max_tokens_to_sample=300,
-            temperature=0.3,
-            stop_sequences=[HUMAN_PROMPT]
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=[
+                {"role": "system", "content": "You are a vessel performance analysis assistant."},
+                {"role": "user", "content": prompt}
+            ],
+            max_tokens=1000,
+            temperature=0.5
         )
-        decision_text = response.completion.strip()
-        return json.loads(decision_text)
-    except json.JSONDecodeError:
+
+        return response['choices'][0]['message']['content']
+
+    except Exception as e:
+        st.error(f"Error in LLM analysis: {str(e)}")
+        return "An error occurred during the analysis."
+
+
+
+
+# Function to get the OpenAI API key
+def get_api_key():
+    if 'openai' in st.secrets:
+        return st.secrets['openai']['api_key']
+    api_key = os.getenv('OPENAI_API_KEY')
+    if api_key is None:
+        raise ValueError("API key not found. Set OPENAI_API_KEY as an environment variable.")
+    return api_key
+
+# Initialize OpenAI API
+openai.api_key = get_api_key()
+
+# Fallback regex to extract vessel name in case LLM fails
+def fallback_extract_vessel_name(query: str) -> str:
+    match = re.search(r'of\s+(.+)', query, re.IGNORECASE)
+    if match:
+        return match.group(1).strip()
+    return query  # If regex fails, return the original query
+
+# Function to call ChatGPT for decision making using ChatCompletion
+def get_llm_decision(query: str) -> Dict[str, str]:
+    messages = [
+        {"role": "system", "content": DECISION_PROMPT},
+        {"role": "user", "content": query}
+    ]
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=messages,
+            max_tokens=200,
+            temperature=0.3
+        )
+        decision_text = response.choices[0].message['content'].strip()
+        #st.write(f"LLM Response: {decision_text}")  # Debugging output
+        
+        decision_data = json.loads(decision_text)
+        
+        # Fallback if the vessel name is not correctly extracted
+        if "vessel_name" not in decision_data or decision_data['vessel_name'] is None or 'hull performance' in decision_data['vessel_name'].lower():
+            decision_data['vessel_name'] = fallback_extract_vessel_name(query)
+        
+        return decision_data
+    except openai.error.InvalidRequestError as e:
+        st.error(f"InvalidRequestError: {str(e)}")
         return {
+            "vessel_name": fallback_extract_vessel_name(query),
             "decision": "general_info",
-            "explanation": "Failed to parse Claude response, defaulting to general info."
+            "explanation": "Invalid request. Defaulting to general info."
         }
     except Exception as e:
-        st.error(f"Error in Claude decision: {str(e)}")
+        st.error(f"Error in LLM decision: {str(e)}")
         return {
+            "vessel_name": fallback_extract_vessel_name(query),
             "decision": "general_info",
-            "explanation": "An error occurred, defaulting to general info."
+            "explanation": "An error occurred. Defaulting to general info."
         }
 
-def get_llm_analysis(query: str, vessel_name: str, data_summary: str) -> str:
-    prompt = f"{HUMAN_PROMPT} {FEW_SHOT_EXAMPLES}\n\nUser Question: {query}\n\nVessel Data:\n{data_summary}\n\nAnalysis:{AI_PROMPT}"
-    response = client.completions.create(
-        model="claude-2",
-        prompt=prompt,
-        max_tokens_to_sample=1000,
-        temperature=0.5,
-        stop_sequences=[HUMAN_PROMPT]
-    )
-    return response.completion
+# Function to handle user query and return analysis
+def handle_user_query(query: str):
+    # Initialize analysis with a default message
+    analysis = "No analysis available. Please check your query."
 
-def generate_data_summary(vessel_name: str, decision: str) -> str:
-    summary = f"Vessel Name: {vessel_name}\n"
-    
-    if decision in ["hull_performance", "combined_performance"]:
-        hull_chart, power_loss_pct_ed, hull_condition = analyze_hull_performance(vessel_name)
-        summary += "Hull Performance Data:\n"
-        summary += f"- Chart available: {'Yes' if hull_chart is not None else 'No'}\n"
-        if power_loss_pct_ed is not None:
-            summary += f"- Current excess power: {power_loss_pct_ed:.2f}%\n"
-        else:
-            summary += "- Current excess power: Not available\n"
-        summary += f"- Hull condition: {hull_condition if hull_condition is not None else 'Not available'}\n"
-    
-    if decision in ["speed_consumption", "combined_performance"]:
-        speed_chart, speed_stats = analyze_speed_consumption(vessel_name)
-        summary += "Speed Consumption Data:\n"
-        summary += f"- Chart available: {'Yes' if speed_chart is not None else 'No'}\n"
-        if speed_stats:
-            summary += f"- Overall speed range: {speed_stats['overall']['speed_range'][0]:.2f} to {speed_stats['overall']['speed_range'][1]:.2f} knots\n"
-            summary += f"- Overall consumption range: {speed_stats['overall']['consumption_range'][0]:.2f} to {speed_stats['overall']['consumption_range'][1]:.2f} mT/d\n"
-            for condition in ['laden', 'ballast']:
-                if condition in speed_stats:
-                    summary += f"- {condition.capitalize()} condition:\n"
-                    summary += f"  - Speed range: {speed_stats[condition]['speed_range'][0]:.2f} to {speed_stats[condition]['speed_range'][1]:.2f} knots\n"
-                    summary += f"  - Consumption range: {speed_stats[condition]['consumption_range'][0]:.2f} to {speed_stats[condition]['consumption_range'][1]:.2f} mT/d\n"
-                    summary += f"  - Slope of fit: {speed_stats[condition]['slope']:.4f}\n"
-                    summary += f"  - R-squared: {speed_stats[condition]['r_squared']:.4f}\n"
-    
-    return summary
-    
-def handle_user_query(query: str) -> Tuple[str, str, str]:
-    vessel_name = clean_vessel_name(extract_vessel_name(query))
-    if not vessel_name:
-        return "I couldn't identify a vessel name in your query. Could you please provide a specific vessel name?", "general_info", None
-
+    # Get the decision and vessel name from the LLM (ChatGPT)
     llm_decision = get_llm_decision(query)
-    data_summary = generate_data_summary(vessel_name, llm_decision['decision'])
-    analysis = get_llm_analysis(query, vessel_name, data_summary)
+    
+    vessel_name = llm_decision.get("vessel_name")
+    if not vessel_name:
+        return "I couldn't identify a vessel name in your query."
 
-    # Display charts based on the decision
-    display_charts(llm_decision['decision'], vessel_name)
-    return analysis, llm_decision['decision'], vessel_name
+    st.write(f"Extracted Vessel Name: {vessel_name}")
+    
+    # Based on the decision, call the appropriate agent
+    if llm_decision['decision'] == 'hull_performance':
+        # Fetch hull performance analysis and chart
+        hull_analysis, power_loss_pct, hull_condition, hull_chart = analyze_hull_performance(vessel_name)
+        analysis = get_llm_analysis(query, hull_analysis, "", hull_condition)  # LLM provides detailed analysis based on hull data
+        
+        # Display the hull performance chart
+        if hull_chart is not None and hasattr(hull_chart, 'savefig'):
+            st.pyplot(hull_chart)
+        else:
+            st.warning("Hull performance chart is not available for this vessel.")
 
+        if power_loss_pct is None or hull_condition is None:
+            st.warning(f"No detailed hull performance data available.")
+        else:
+            st.success(f"Average Power Loss: {power_loss_pct:.2f}%, Hull Condition: {hull_condition}")
+    
+    elif llm_decision['decision'] == 'speed_consumption':
+        # Fetch speed consumption analysis and chart
+        speed_analysis, speed_chart = analyze_speed_consumption(vessel_name)
+        st.write(f"Debug Info: {speed_analysis}")  # Display debug information
+        analysis = get_llm_analysis(query, "", speed_analysis, "")  # LLM provides detailed analysis based on speed data
+        
+        # Display the speed consumption chart
+        if speed_chart is not None and hasattr(speed_chart, 'savefig'):
+            st.pyplot(speed_chart)
+        else:
+            st.warning("Speed consumption chart is not available for this vessel.")
+           
+    elif llm_decision['decision'] == 'combined_performance':
+        # Fetch both hull and speed consumption analyses and charts
+        hull_analysis, _, hull_condition, hull_chart = analyze_hull_performance(vessel_name)
+        speed_analysis, speed_chart = analyze_speed_consumption(vessel_name)
+        
+        # Use the LLM to generate a combined analysis based on both hull and speed data
+        analysis = get_llm_analysis(query, hull_analysis, speed_analysis, hull_condition)
+        
+        # Display both charts
+        if hull_chart is not None and hasattr(hull_chart, 'savefig'):
+            st.pyplot(hull_chart)
+        else:
+            st.warning("Hull performance chart is not available for this vessel.")
+        
+        if speed_chart is not None and hasattr(speed_chart, 'savefig'):
+            st.pyplot(speed_chart)
+        else:
+            st.warning("Speed consumption chart is not available for this vessel.")
+    
+    else:
+        analysis = "The query seems to require general vessel information or is unclear. Please refine the query."
+    
+    # Return the analysis without printing it
+    return analysis
+
+
+
+# Function to display the charts based on the LLM's decision
 def display_charts(decision: str, vessel_name: str):
     if decision in ["speed_consumption", "combined_performance"]:
         try:
-            speed_chart, _ = analyze_speed_consumption(vessel_name)
+            speed_analysis, speed_chart = analyze_speed_consumption(vessel_name)
             if speed_chart is not None and hasattr(speed_chart, 'savefig'):
                 st.pyplot(speed_chart)
             else:
                 st.warning("Speed consumption chart is not available for this vessel.")
         except Exception as e:
             st.error(f"An error occurred while generating the speed consumption chart: {str(e)}")
-            print(f"Error in display_charts: {str(e)}")  # For debugging
     
     if decision in ["hull_performance", "combined_performance"]:
         try:
-            hull_chart, _, _ = analyze_hull_performance(vessel_name)
+            # Unpack the returned values from the hull performance agent
+            hull_analysis, _, _, hull_chart = analyze_hull_performance(vessel_name)
             if hull_chart is not None and hasattr(hull_chart, 'savefig'):
                 st.pyplot(hull_chart)
             else:
                 st.warning("Hull performance chart is not available for this vessel.")
         except Exception as e:
             st.error(f"An error occurred while generating the hull performance chart: {str(e)}")
-            print(f"Error in display_charts: {str(e)}")  # For debugging
+
+
+# Main function for the Streamlit app
 def main():
-    st.title("Advanced Vessel Performance Chatbot (Powered by Claude)")
+    st.title("Advanced Vessel Performance Chatbot (Powered by ChatGPT)")
 
     if 'messages' not in st.session_state:
         st.session_state.messages = []
@@ -416,11 +289,13 @@ def main():
         with st.chat_message("human"):
             st.markdown(prompt)
 
-        analysis, decision, vessel_name = handle_user_query(prompt)
+        # Get the response from the chatbot
+        analysis = handle_user_query(prompt)
 
         st.session_state.messages.append({"role": "assistant", "content": analysis})
         with st.chat_message("assistant"):
             st.markdown(analysis)
 
+# Run the app
 if __name__ == "__main__":
     main()
