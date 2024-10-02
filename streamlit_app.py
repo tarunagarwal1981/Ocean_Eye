@@ -333,7 +333,6 @@ def display_charts(decision: str, vessel_name: str):
 
 
 # Main function for the Streamlit app
-# Main function for the Streamlit app
 def main():
     st.title("Advanced Vessel Performance Chatbot (Powered by ChatGPT)")
 
@@ -349,16 +348,15 @@ def main():
         with st.chat_message("human"):
             st.markdown(prompt)
 
-        # Handle follow-up queries like "give me more information"
+        # Check if it's a follow-up request like "show charts" or "give me more information"
         if re.search(r"(more information|give me charts|detailed)", prompt, re.IGNORECASE):
             handle_more_information()
         else:
-            # Get the response from the chatbot
+            # Handle initial query
             analysis = handle_user_query(prompt)
             st.session_state.messages.append({"role": "assistant", "content": analysis})
             with st.chat_message("assistant"):
                 st.markdown(analysis)
-
 # Run the app
 if __name__ == "__main__":
     main()
