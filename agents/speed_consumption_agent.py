@@ -6,6 +6,11 @@ from datetime import datetime
 from utils.database_utils import fetch_data_from_db
 import matplotlib.dates as mdates
 from matplotlib.colors import Normalize
+import logging
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 def fetch_baseline_data(vessel_name: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
@@ -18,9 +23,14 @@ def fetch_baseline_data(vessel_name: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     baseline_data = fetch_data_from_db(query)
     
+    if baseline_data.empty:
+        logger.warning(f"No baseline data found for vessel: {vessel_name}")
+        return pd.DataFrame(), pd.DataFrame()
+    
     laden_baseline = baseline_data[baseline_data['load_type'].isin(['Scantling', 'Design'])]
     ballast_baseline = baseline_data[baseline_data['load_type'] == 'Ballast']
     
+    logger.info(f"Fetched baseline data: Laden ({len(laden_baseline)} rows), Ballast ({len(ballast_baseline)} rows)")
     return laden_baseline, ballast_baseline
 
 def fetch_ops_data(vessel_name: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
@@ -34,26 +44,41 @@ def fetch_ops_data(vessel_name: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     ops_data = fetch_data_from_db(query)
     
+    if ops_data.empty:
+        logger.warning(f"No operational data found for vessel: {vessel_name}")
+        return pd.DataFrame(), pd.DataFrame()
+    
+    logger.info(f"Initial operational data fetched: {len(ops_data)} rows")
+    
     # Apply filters
     ops_data = ops_data[
         (ops_data['beaufort_scale'] < 4) & 
         (ops_data['normalised_me_consumption'] > 5)
     ]
     
+    logger.info(f"After applying filters: {len(ops_data)} rows")
+    
     # Convert reportdate to datetime and handle potential errors
     ops_data['reportdate'] = pd.to_datetime(ops_data['reportdate'], errors='coerce')
     ops_data = ops_data.dropna(subset=['reportdate'])  # Remove rows with invalid dates
+    
+    logger.info(f"After cleaning dates: {len(ops_data)} rows")
     
     # Split data
     laden_ops = ops_data[ops_data['load_type'] == 'Laden']
     ballast_ops = ops_data[ops_data['load_type'] == 'Ballast']
     
+    logger.info(f"Split data: Laden ({len(laden_ops)} rows), Ballast ({len(ballast_ops)} rows)")
     return laden_ops, ballast_ops
 
 def add_baseline_points(ops_data: pd.DataFrame, baseline_data: pd.DataFrame, speeds: List[float] = [8, 10, 14]) -> pd.DataFrame:
     """
     Add baseline points for specified speeds to the operational data.
     """
+    if baseline_data.empty:
+        logger.warning("No baseline data available to add points")
+        return ops_data
+    
     baseline_points = baseline_data[baseline_data['speed_kts'].isin(speeds)]
     return pd.concat([ops_data, baseline_points.rename(columns={'speed_kts': 'observed_speed', 'me_consumption_mt': 'normalised_me_consumption'})], ignore_index=True)
 
@@ -70,6 +95,7 @@ def plot_speed_consumption(vessel_name: str, laden_ops: pd.DataFrame, ballast_op
         
         if ops_data.empty:
             ax.text(0.5, 0.5, f"No {condition} data available", ha='center', va='center', color='white')
+            logger.warning(f"No {condition} operational data available for plotting")
             return
 
         # Sort ops_data by date
@@ -93,21 +119,24 @@ def plot_speed_consumption(vessel_name: str, laden_ops: pd.DataFrame, ballast_op
         cbar.ax.tick_params(colors='white')
         
         # Plot baseline data
-        ax.scatter(baseline_data['speed_kts'], baseline_data['me_consumption_mt'], 
-                   color='#FF00FF', s=100, label='Baseline')
+        if not baseline_data.empty:
+            ax.scatter(baseline_data['speed_kts'], baseline_data['me_consumption_mt'], 
+                       color='#FF00FF', s=100, label='Baseline')
+        else:
+            logger.warning(f"No baseline data available for {condition} condition")
         
         # Fit exponential curves
         def fit_exp(x, y):
             return np.polyfit(x, np.log(y), 1, w=np.sqrt(y))
         
         ops_fit = fit_exp(ops_data['observed_speed'], ops_data['normalised_me_consumption'])
-        base_fit = fit_exp(baseline_data['speed_kts'], baseline_data['me_consumption_mt'])
+        ax.plot(ops_data['observed_speed'], np.exp(ops_fit[1]) * np.exp(ops_fit[0] * ops_data['observed_speed']), 
+                '--', color='#00FFFF', linewidth=2, label='Ops Fit')
         
-        x_range = np.linspace(min(ops_data['observed_speed'].min(), baseline_data['speed_kts'].min()),
-                              max(ops_data['observed_speed'].max(), baseline_data['speed_kts'].max()), 100)
-        
-        ax.plot(x_range, np.exp(ops_fit[1]) * np.exp(ops_fit[0] * x_range), '--', color='#00FFFF', linewidth=2, label='Ops Fit')
-        ax.plot(x_range, np.exp(base_fit[1]) * np.exp(base_fit[0] * x_range), '--', color='#FF00FF', linewidth=2, label='Baseline Fit')
+        if not baseline_data.empty:
+            base_fit = fit_exp(baseline_data['speed_kts'], baseline_data['me_consumption_mt'])
+            ax.plot(baseline_data['speed_kts'], np.exp(base_fit[1]) * np.exp(base_fit[0] * baseline_data['speed_kts']), 
+                    '--', color='#FF00FF', linewidth=2, label='Baseline Fit')
         
         ax.set_title(f'{condition} Condition', color='white')
         ax.set_xlabel('Speed (knots)', color='white')
@@ -132,16 +161,23 @@ def analyze_speed_consumption(vessel_name: str) -> Tuple[str, Optional[plt.Figur
         laden_baseline, ballast_baseline = fetch_baseline_data(vessel_name)
         laden_ops, ballast_ops = fetch_ops_data(vessel_name)
         
+        if laden_baseline.empty and ballast_baseline.empty:
+            return f"No baseline data available for {vessel_name}", None
+        
+        if laden_ops.empty and ballast_ops.empty:
+            return f"No operational data available for {vessel_name} after applying filters", None
+        
         laden_ops = add_baseline_points(laden_ops, laden_baseline)
         ballast_ops = add_baseline_points(ballast_ops, ballast_baseline)
         
-        if laden_ops.empty and ballast_ops.empty:
-            return f"No operational data available for {vessel_name}", None
-        
         fig = plot_speed_consumption(vessel_name, laden_ops, ballast_ops, laden_baseline, ballast_baseline)
+        
+        if fig is None:
+            return f"Unable to generate plot for {vessel_name}", None
         
         return f"Speed consumption analysis completed for {vessel_name}", fig
     except Exception as e:
+        logger.exception(f"Error in speed consumption analysis for {vessel_name}")
         return f"Error in speed consumption analysis for {vessel_name}: {str(e)}", None
 
 # Example usage (for testing)
