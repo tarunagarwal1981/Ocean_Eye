@@ -60,13 +60,14 @@ def add_baseline_points(ops_data: pd.DataFrame, baseline_data: pd.DataFrame, spe
 def plot_speed_consumption(vessel_name: str, laden_ops: pd.DataFrame, ballast_ops: pd.DataFrame, 
                            laden_baseline: pd.DataFrame, ballast_baseline: pd.DataFrame) -> Optional[plt.Figure]:
     """
-    Plot speed consumption data for both laden and ballast conditions.
+    Plot speed consumption data for both laden and ballast conditions with background and color gradients.
     """
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 10))
+    fig.patch.set_facecolor('#000C20')
     
     def plot_condition(ax, ops_data, baseline_data, condition):
         if ops_data.empty:
-            ax.text(0.5, 0.5, f"No {condition} data available", ha='center', va='center')
+            ax.text(0.5, 0.5, f"No {condition} data available", ha='center', va='center', color='white')
             return
 
         # Sort ops_data by date
@@ -75,20 +76,24 @@ def plot_speed_consumption(vessel_name: str, laden_ops: pd.DataFrame, ballast_op
         # Create a color map based on the date
         date_vals = mdates.date2num(ops_data['reportdate'])
         norm = Normalize(date_vals.min(), date_vals.max())
-        
+        colors = plt.cm.viridis(norm(date_vals))
+
         # Plot ops data with color gradient
         scatter = ax.scatter(ops_data['observed_speed'], ops_data['normalised_me_consumption'],
-                             c=date_vals, cmap='viridis', norm=norm, s=50, alpha=0.6)
+                             c=date_vals, cmap='viridis', s=50, alpha=0.6, edgecolor='w', linewidth=0.5)
         
         # Create a custom colorbar
         cbar = plt.colorbar(scatter, ax=ax)
-        cbar.set_label('Date')
+        cbar.set_label('Date', color='white')
         cbar.ax.yaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
         cbar.ax.yaxis.set_major_locator(mdates.AutoDateLocator())
+        cbar.ax.yaxis.set_tick_params(color='white')
+        cbar.outline.set_edgecolor('white')
+        cbar.ax.yaxis.set_tick_params(labelcolor='white')
         
         # Plot baseline data
         ax.scatter(baseline_data['speed_kts'], baseline_data['me_consumption_mt'], 
-                   color='red', s=100, label='Baseline')
+                   color='red', s=100, label='Baseline', alpha=0.8)
         
         # Fit exponential curves
         def fit_exp(x, y):
@@ -100,18 +105,20 @@ def plot_speed_consumption(vessel_name: str, laden_ops: pd.DataFrame, ballast_op
         x_range = np.linspace(min(ops_data['observed_speed'].min(), baseline_data['speed_kts'].min()),
                               max(ops_data['observed_speed'].max(), baseline_data['speed_kts'].max()), 100)
         
-        ax.plot(x_range, np.exp(ops_fit[1]) * np.exp(ops_fit[0] * x_range), 'b--', label='Ops Fit')
-        ax.plot(x_range, np.exp(base_fit[1]) * np.exp(base_fit[0] * x_range), 'r--', label='Baseline Fit')
+        ax.plot(x_range, np.exp(ops_fit[1]) * np.exp(ops_fit[0] * x_range), 'lime', label='Ops Fit', linestyle='--', linewidth=2)
+        ax.plot(x_range, np.exp(base_fit[1]) * np.exp(base_fit[0] * x_range), 'cyan', label='Baseline Fit', linestyle='--', linewidth=2)
         
-        ax.set_title(f'{condition} Condition')
-        ax.set_xlabel('Speed (knots)')
-        ax.set_ylabel('ME Consumption (mt/day)')
-        ax.legend()
+        ax.set_title(f'{condition} Condition', color='white')
+        ax.set_xlabel('Speed (knots)', color='white')
+        ax.set_ylabel('ME Consumption (mt/day)', color='white')
+        ax.legend(facecolor='#000C20', edgecolor='white')
+        ax.set_facecolor('#000C20')
+        ax.tick_params(colors='white')
     
     plot_condition(ax1, laden_ops, laden_baseline, 'Laden')
     plot_condition(ax2, ballast_ops, ballast_baseline, 'Ballast')
     
-    fig.suptitle(f'Speed vs Consumption - {vessel_name}', fontsize=16)
+    fig.suptitle(f'Speed vs Consumption - {vessel_name}', fontsize=16, color='white')
     plt.tight_layout()
     return fig
 
