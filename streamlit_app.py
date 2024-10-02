@@ -16,20 +16,19 @@ You are an AI assistant specialized in vessel performance analysis. The user wil
 2. Determine what type of performance information is needed to answer the user's query. The options are:
    - Hull performance
    - Speed consumption
-   - Vessel performance (both hull and speed)
    - Combined performance (both hull and speed)
    - General vessel information
 
-Also, consider the following scenarios:
-- If the query seems to ask for **concise** information, provide a brief, easy-to-understand analysis without charts, and ask the user if they would like more detailed information.
-- If the query seems to ask for **detailed** information (e.g., the user asks for charts or mentions “more information”), provide a more comprehensive analysis, including performance charts.
+Additionally:
+- If the user asks for "vessel performance" or a combination of "hull and speed performance," return "combined_performance."
+- If the user asks only about "hull performance" or "hull and propeller performance," return "hull_performance."
+- If the user asks only about "speed consumption," return "speed_consumption."
 
 Output your response as a JSON object with the following structure:
 {
     "vessel_name": "<vessel_name>",
-    "decision": "hull_performance" or "speed_consumption" or "combined_performance" or "general_info" or "vessel_performance",
-    "response_type": "concise" or "detailed",
-    "explanation": "Brief explanation of why you made this decision and why the response is concise or detailed"
+    "decision": "hull_performance" or "speed_consumption" or "combined_performance" or "general_info",
+    "explanation": "Brief explanation of why you made this decision"
 }
 
 
@@ -247,21 +246,20 @@ def get_llm_decision(query: str) -> Dict[str, str]:
 
 # Function to handle user query and return analysis
 def handle_user_query(query: str):
-    # Initialize analysis with a default message to avoid UnboundLocalError
-    analysis = "No analysis available. Please check your query."
-
     # Get the decision and vessel name from the LLM (ChatGPT)
     llm_decision = get_llm_decision(query)
-
-    # Safeguard: Ensure the response contains vessel_name and decision
+    
+    # Debugging: Print or log the LLM decision to check the output
+    st.write(f"LLM Decision: {llm_decision}")
+    
     vessel_name = llm_decision.get("vessel_name", "")
     answer_type = llm_decision.get("answer_type", "concise")
     decision_type = llm_decision.get("decision", "general_info")
-
+    
     # Check if the vessel name was extracted correctly
     if not vessel_name:
         return "I couldn't identify a vessel name in your query."
-
+    
     # Store the vessel name and decision type in session state for follow-up queries
     st.session_state.vessel_name = vessel_name
     st.session_state.decision_type = decision_type
@@ -285,7 +283,6 @@ def handle_user_query(query: str):
             analysis = "The query seems to require general vessel information or is unclear. Please refine the query."
 
     elif answer_type == "detailed":
-        # Handle detailed requests
         handle_more_information()  # Provide detailed analysis and charts if requested
     
     return analysis
