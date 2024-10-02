@@ -280,11 +280,12 @@ def handle_user_query(query: str):
 
 # Function to handle follow-up queries asking for more information
 def handle_more_information():
+    # Check if vessel name and decision type are in session state
     if 'vessel_name' in st.session_state and 'decision_type' in st.session_state:
         vessel_name = st.session_state.vessel_name
         decision_type = st.session_state.decision_type
 
-        # Provide the detailed analysis and charts
+        # Based on the stored decision type, provide the detailed response
         if decision_type == 'hull_performance':
             hull_analysis, power_loss_pct, hull_condition, hull_chart = analyze_hull_performance(vessel_name)
             detailed_analysis = get_llm_analysis(f"Hull performance of {vessel_name}", hull_analysis, "", hull_condition)
@@ -305,62 +306,6 @@ def handle_more_information():
         st.write(detailed_analysis)
     else:
         st.warning("No previous context found. Please provide a new query.")
-
-    
-    # Based on the decision, call the appropriate agent
-    if llm_decision['decision'] == 'hull_performance':
-        # Fetch hull performance analysis and chart
-        hull_analysis, power_loss_pct, hull_condition, hull_chart = analyze_hull_performance(vessel_name)
-        analysis = get_llm_analysis(query, hull_analysis, "", hull_condition)  # LLM provides detailed analysis based on hull data
-        
-        # Display the hull performance chart
-        if hull_chart is not None and hasattr(hull_chart, 'savefig'):
-            st.pyplot(hull_chart)
-        else:
-            st.warning("Hull performance chart is not available for this vessel.")
-
-        if power_loss_pct is None or hull_condition is None:
-            st.warning(f"No detailed hull performance data available.")
-        else:
-            st.success(f"Average Power Loss: {power_loss_pct:.2f}%, Hull Condition: {hull_condition}")
-    
-    elif llm_decision['decision'] == 'speed_consumption':
-        # Fetch speed consumption analysis and chart
-        speed_analysis, speed_chart = analyze_speed_consumption(vessel_name)
-        st.write(f"Debug Info: {speed_analysis}")  # Display debug information
-        analysis = get_llm_analysis(query, "", speed_analysis, "")  # LLM provides detailed analysis based on speed data
-        
-        # Display the speed consumption chart
-        if speed_chart is not None and hasattr(speed_chart, 'savefig'):
-            st.pyplot(speed_chart)
-        else:
-            st.warning("Speed consumption chart is not available for this vessel.")
-           
-    elif llm_decision['decision'] == 'combined_performance':
-        # Fetch both hull and speed consumption analyses and charts
-        hull_analysis, _, hull_condition, hull_chart = analyze_hull_performance(vessel_name)
-        speed_analysis, speed_chart = analyze_speed_consumption(vessel_name)
-        
-        # Use the LLM to generate a combined analysis based on both hull and speed data
-        analysis = get_llm_analysis(query, hull_analysis, speed_analysis, hull_condition)
-        
-        # Display both charts
-        if hull_chart is not None and hasattr(hull_chart, 'savefig'):
-            st.pyplot(hull_chart)
-        else:
-            st.warning("Hull performance chart is not available for this vessel.")
-        
-        if speed_chart is not None and hasattr(speed_chart, 'savefig'):
-            st.pyplot(speed_chart)
-        else:
-            st.warning("Speed consumption chart is not available for this vessel.")
-    
-    else:
-        analysis = "The query seems to require general vessel information or is unclear. Please refine the query."
-    
-    # Return the analysis without printing it
-    return analysis
-
 
 
 # Function to display the charts based on the LLM's decision
