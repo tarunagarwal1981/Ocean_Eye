@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 from typing import Tuple, List
 from datetime import datetime
 from utils.database_utils import fetch_data_from_db
+import matplotlib.dates as mdates
 
 def fetch_baseline_data(vessel_name: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
@@ -38,6 +39,9 @@ def fetch_ops_data(vessel_name: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
         (ops_data['normalised_me_consumption'] > 5)
     ]
     
+    # Convert reportdate to datetime
+    ops_data['reportdate'] = pd.to_datetime(ops_data['reportdate'])
+    
     # Split data
     laden_ops = ops_data[ops_data['load_type'] == 'Laden']
     ballast_ops = ops_data[ops_data['load_type'] == 'Ballast']
@@ -59,10 +63,21 @@ def plot_speed_consumption(vessel_name: str, laden_ops: pd.DataFrame, ballast_op
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 10))
     
     def plot_condition(ax, ops_data, baseline_data, condition):
+        # Sort ops_data by date
+        ops_data = ops_data.sort_values('reportdate')
+        
+        # Create a color map based on the date
+        norm = plt.Normalize(ops_data['reportdate'].min(), ops_data['reportdate'].max())
+        
         # Plot ops data with color gradient
         scatter = ax.scatter(ops_data['observed_speed'], ops_data['normalised_me_consumption'],
-                             c=ops_data['reportdate'], cmap='viridis', s=50, alpha=0.6)
-        plt.colorbar(scatter, ax=ax, label='Date')
+                             c=ops_data['reportdate'], cmap='viridis', norm=norm, s=50, alpha=0.6)
+        
+        # Create a custom colorbar
+        cbar = plt.colorbar(scatter, ax=ax)
+        cbar.set_label('Date')
+        cbar.ax.yaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+        cbar.ax.yaxis.set_major_locator(mdates.AutoDateLocator())
         
         # Plot baseline data
         ax.scatter(baseline_data['speed_kts'], baseline_data['me_consumption_mt'], 
