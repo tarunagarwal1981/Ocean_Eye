@@ -1,10 +1,11 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
-from typing import Tuple, List
+from typing import Tuple, List, Optional
 from datetime import datetime
 from utils.database_utils import fetch_data_from_db
 import matplotlib.dates as mdates
+from matplotlib.colors import Normalize
 
 def fetch_baseline_data(vessel_name: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
@@ -39,8 +40,9 @@ def fetch_ops_data(vessel_name: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
         (ops_data['normalised_me_consumption'] > 5)
     ]
     
-    # Convert reportdate to datetime
-    ops_data['reportdate'] = pd.to_datetime(ops_data['reportdate'])
+    # Convert reportdate to datetime and handle potential errors
+    ops_data['reportdate'] = pd.to_datetime(ops_data['reportdate'], errors='coerce')
+    ops_data = ops_data.dropna(subset=['reportdate'])  # Remove rows with invalid dates
     
     # Split data
     laden_ops = ops_data[ops_data['load_type'] == 'Laden']
@@ -56,22 +58,27 @@ def add_baseline_points(ops_data: pd.DataFrame, baseline_data: pd.DataFrame, spe
     return pd.concat([ops_data, baseline_points.rename(columns={'speed_kts': 'observed_speed', 'me_consumption_mt': 'normalised_me_consumption'})], ignore_index=True)
 
 def plot_speed_consumption(vessel_name: str, laden_ops: pd.DataFrame, ballast_ops: pd.DataFrame, 
-                           laden_baseline: pd.DataFrame, ballast_baseline: pd.DataFrame) -> plt.Figure:
+                           laden_baseline: pd.DataFrame, ballast_baseline: pd.DataFrame) -> Optional[plt.Figure]:
     """
     Plot speed consumption data for both laden and ballast conditions.
     """
     fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(20, 10))
     
     def plot_condition(ax, ops_data, baseline_data, condition):
+        if ops_data.empty:
+            ax.text(0.5, 0.5, f"No {condition} data available", ha='center', va='center')
+            return
+
         # Sort ops_data by date
         ops_data = ops_data.sort_values('reportdate')
         
         # Create a color map based on the date
-        norm = plt.Normalize(ops_data['reportdate'].min(), ops_data['reportdate'].max())
+        date_vals = mdates.date2num(ops_data['reportdate'])
+        norm = Normalize(date_vals.min(), date_vals.max())
         
         # Plot ops data with color gradient
         scatter = ax.scatter(ops_data['observed_speed'], ops_data['normalised_me_consumption'],
-                             c=ops_data['reportdate'], cmap='viridis', norm=norm, s=50, alpha=0.6)
+                             c=date_vals, cmap='viridis', norm=norm, s=50, alpha=0.6)
         
         # Create a custom colorbar
         cbar = plt.colorbar(scatter, ax=ax)
@@ -108,22 +115,25 @@ def plot_speed_consumption(vessel_name: str, laden_ops: pd.DataFrame, ballast_op
     plt.tight_layout()
     return fig
 
-def analyze_speed_consumption(vessel_name: str) -> Tuple[str, plt.Figure]:
+def analyze_speed_consumption(vessel_name: str) -> Tuple[str, Optional[plt.Figure]]:
     """
     Analyze speed consumption for a given vessel and generate a plot.
     """
-    laden_baseline, ballast_baseline = fetch_baseline_data(vessel_name)
-    laden_ops, ballast_ops = fetch_ops_data(vessel_name)
-    
-    laden_ops = add_baseline_points(laden_ops, laden_baseline)
-    ballast_ops = add_baseline_points(ballast_ops, ballast_baseline)
-    
-    if laden_ops.empty and ballast_ops.empty:
-        return f"No operational data available for {vessel_name}", None
-    
-    fig = plot_speed_consumption(vessel_name, laden_ops, ballast_ops, laden_baseline, ballast_baseline)
-    
-    return f"Speed consumption analysis completed for {vessel_name}", fig
+    try:
+        laden_baseline, ballast_baseline = fetch_baseline_data(vessel_name)
+        laden_ops, ballast_ops = fetch_ops_data(vessel_name)
+        
+        laden_ops = add_baseline_points(laden_ops, laden_baseline)
+        ballast_ops = add_baseline_points(ballast_ops, ballast_baseline)
+        
+        if laden_ops.empty and ballast_ops.empty:
+            return f"No operational data available for {vessel_name}", None
+        
+        fig = plot_speed_consumption(vessel_name, laden_ops, ballast_ops, laden_baseline, ballast_baseline)
+        
+        return f"Speed consumption analysis completed for {vessel_name}", fig
+    except Exception as e:
+        return f"Error in speed consumption analysis for {vessel_name}: {str(e)}", None
 
 # Example usage (for testing)
 if __name__ == "__main__":
