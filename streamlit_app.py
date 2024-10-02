@@ -247,14 +247,22 @@ def get_llm_decision(query: str) -> Dict[str, str]:
 
 # Function to handle user query and return analysis
 def handle_user_query(query: str):
+    # Initialize analysis with a default message to avoid UnboundLocalError
+    analysis = "No analysis available. Please check your query."
+
     # Get the decision and vessel name from the LLM (ChatGPT)
     llm_decision = get_llm_decision(query)
-    
-    vessel_name = llm_decision.get("vessel_name")
-    answer_type = llm_decision.get("answer_type")
-    decision_type = llm_decision.get("decision")  # Hull, speed, combined, or general info
 
-    # Store context in session state for future follow-up queries
+    # Safeguard: Ensure the response contains vessel_name and decision
+    vessel_name = llm_decision.get("vessel_name", "")
+    answer_type = llm_decision.get("answer_type", "concise")
+    decision_type = llm_decision.get("decision", "general_info")
+
+    # Check if the vessel name was extracted correctly
+    if not vessel_name:
+        return "I couldn't identify a vessel name in your query."
+
+    # Store the vessel name and decision type in session state for follow-up queries
     st.session_state.vessel_name = vessel_name
     st.session_state.decision_type = decision_type
 
@@ -273,7 +281,11 @@ def handle_user_query(query: str):
             speed_analysis, _ = analyze_speed_consumption(vessel_name)
             analysis = f"Both hull and speed data for {vessel_name} indicate good performance. Would you like a detailed report or charts?"
 
+        else:
+            analysis = "The query seems to require general vessel information or is unclear. Please refine the query."
+
     elif answer_type == "detailed":
+        # Handle detailed requests
         handle_more_information()  # Provide detailed analysis and charts if requested
     
     return analysis
