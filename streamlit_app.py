@@ -31,10 +31,10 @@ Output your response as a JSON object with the following structure:
     "response_type": "concise" or "detailed",
     "explanation": "Brief explanation of why you made this decision and why the response is concise or detailed"
 }
-"""
+
 
 # Example logic for how to handle the response:
-"""
+
 Example 1:
 Q: Can you give me the hull performance of Oceanica Explorer?
 {
