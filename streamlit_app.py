@@ -27,7 +27,7 @@ Also, consider the following scenarios:
 Output your response as a JSON object with the following structure:
 {
     "vessel_name": "<vessel_name>",
-    "decision": "hull_performance" or "speed_consumption" or "combined_performance" or "general_info",
+    "decision": "hull_performance" or "speed_consumption" or "combined_performance" or "general_info" or "vessel_performance",
     "response_type": "concise" or "detailed",
     "explanation": "Brief explanation of why you made this decision and why the response is concise or detailed"
 }
@@ -114,6 +114,41 @@ A: Here's the detailed hull performance analysis for Sea Breeze:
 
 **Charts**: Below are the performance charts for further reference.
 *Make sure to remind the crew to report data accurately for better analysis.*
+
+Example 4:
+Q: Can you provide the speed consumption profile for the vessel Starlight Voyager?
+A: I've analyzed the speed consumption data for Starlight Voyager. Here's what I found:
+
+1. Speed Range: The vessel operates between 10 to 18 knots based on the available data.
+2. Consumption Trend: There's a clear non-linear increase in fuel consumption as speed increases.
+3. Optimal Speed: The most fuel-efficient speed appears to be around 12-13 knots, where the increase in consumption per knot is lowest.
+4. High-Speed Impact: Operating at speeds above 16 knots results in a sharp increase in fuel consumption, potentially over 50% more than at optimal speed.
+5. Loading Conditions: The data shows distinct consumption profiles for laden and ballast conditions, with ballast condition generally showing lower consumption at the same speeds.
+
+Recommendations:
+1. Prioritize operating at speeds between 12-13 knots when possible to maximize fuel efficiency.
+2. For time-sensitive operations, consider the trade-off between increased speed and fuel consumption, especially above 16 knots.
+3. Optimize route planning to take advantage of the more efficient ballast condition where applicable.
+4. Monitor and record speed and consumption data regularly to identify any deviations from this profile, which could indicate performance issues.
+5. Consider conducting a detailed analysis of the economic impact of speed on your specific trade routes to find the optimal balance between speed and efficiency.
+
+**Additionally, here's the speed consumption chart for your reference.**
+
+*Please note: This analysis is as good as the data reported by the vessel. We kindly request you to remind the vessel to report data accurately and periodically. Accurate analysis not only helps reduce the vessel's carbon footprint but also realizes fuel cost savings.*
+
+Guidelines for Analysis:
+- If the user asks about vessel performance or hull performance, always include **both the speed consumption chart and hull performance chart** for reference.
+- If the hull condition is gauged as **Good**, do not recommend any hull cleaning or underwater inspection.
+- If the hull condition is **Average**, recommend performing an underwater hull inspection and propeller polishing.
+- If the hull condition is **Poor**, recommend performing hull cleaning and propeller polishing.
+- After each response, include a polite reminder: *This analysis is as good as the data reported by the vessel. We kindly request you to remind the vessel to report data accurately and periodically. Accurate analysis not only helps reduce the vessel's carbon footprint but also realizes fuel cost savings.*
+
+Now, please answer the following question in a similar style, using the data I provide:
+{user_question}
+
+{data_summary}
+
+Provide a detailed analysis and recommendations based on this data.
 """
 
 # LLM detailed analysis function
