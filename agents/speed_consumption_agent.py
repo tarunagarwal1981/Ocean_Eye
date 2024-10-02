@@ -76,11 +76,12 @@ def plot_speed_consumption(vessel_name: str, laden_ops: pd.DataFrame, ballast_op
         # Create a color map based on the date
         date_vals = mdates.date2num(ops_data['reportdate'])
         norm = Normalize(date_vals.min(), date_vals.max())
-        colors = plt.cm.viridis(norm(date_vals))
+        # Use a brighter colormap
+        colors = plt.cm.plasma(norm(date_vals))
 
-        # Plot ops data with color gradient
+        # Plot ops data with bright color gradient
         scatter = ax.scatter(ops_data['observed_speed'], ops_data['normalised_me_consumption'],
-                             c=date_vals, cmap='viridis', s=50, alpha=0.6, edgecolor='w', linewidth=0.5)
+                             c=date_vals, cmap='plasma', s=80, alpha=0.9, edgecolor='w', linewidth=0.5)
         
         # Create a custom colorbar
         cbar = plt.colorbar(scatter, ax=ax)
@@ -108,10 +109,11 @@ def plot_speed_consumption(vessel_name: str, laden_ops: pd.DataFrame, ballast_op
         ax.plot(x_range, np.exp(ops_fit[1]) * np.exp(ops_fit[0] * x_range), 'lime', label='Ops Fit', linestyle='--', linewidth=2)
         ax.plot(x_range, np.exp(base_fit[1]) * np.exp(base_fit[0] * x_range), 'cyan', label='Baseline Fit', linestyle='--', linewidth=2)
         
+        # Customize axis and legend colors
         ax.set_title(f'{condition} Condition', color='white')
         ax.set_xlabel('Speed (knots)', color='white')
         ax.set_ylabel('ME Consumption (mt/day)', color='white')
-        ax.legend(facecolor='#000C20', edgecolor='white')
+        ax.legend(facecolor='#000C20', edgecolor='white', fontsize=12, labelcolor='white')
         ax.set_facecolor('#000C20')
         ax.tick_params(colors='white')
     
