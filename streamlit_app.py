@@ -246,44 +246,35 @@ def get_llm_decision(query: str) -> Dict[str, str]:
         }
 
 # Function to handle user query and return analysis
-# Function to handle user query and return analysis
 def handle_user_query(query: str):
-    # Initialize analysis with a default message
-    analysis = "No analysis available. Please check your query."
-
     # Get the decision and vessel name from the LLM (ChatGPT)
     llm_decision = get_llm_decision(query)
     
     vessel_name = llm_decision.get("vessel_name")
-    if not vessel_name:
-        return "I couldn't identify a vessel name in your query."
+    answer_type = llm_decision.get("answer_type")
+    decision_type = llm_decision.get("decision")  # Hull, speed, combined, or general info
 
-    st.write(f"Extracted Vessel Name: {vessel_name}")
-    
-    # Save the vessel name and decision type in session state for future queries
+    # Store context in session state for future follow-up queries
     st.session_state.vessel_name = vessel_name
-    st.session_state.decision_type = llm_decision['decision']
+    st.session_state.decision_type = decision_type
 
-    # Based on the decision, call the appropriate agent
-    if llm_decision['decision'] == 'hull_performance':
-        # Provide a brief response without charts and ask if more details are needed
-        hull_analysis, power_loss_pct, hull_condition, hull_chart = analyze_hull_performance(vessel_name)
-        analysis = f"The hull of {vessel_name} is in {hull_condition} condition. Current power loss is around {power_loss_pct:.2f}%. Would you like more details or performance charts?"
+    # Now based on the answer_type (concise/detailed), respond accordingly
+    if answer_type == "concise":
+        if decision_type == 'hull_performance':
+            hull_analysis, power_loss_pct, hull_condition, _ = analyze_hull_performance(vessel_name)
+            analysis = f"The hull of {vessel_name} is in {hull_condition} condition with {power_loss_pct:.2f}% power loss. Would you like more details or charts?"
 
-        if power_loss_pct is None or hull_condition is None:
-            st.warning(f"No detailed hull performance data available.")
-    
-    elif llm_decision['decision'] == 'speed_consumption':
-        speed_analysis, speed_chart = analyze_speed_consumption(vessel_name)
-        analysis = f"The speed consumption profile for {vessel_name} shows a non-linear increase in fuel consumption with speed. Would you like to see the charts or a detailed report?"
+        elif decision_type == 'speed_consumption':
+            speed_analysis, _ = analyze_speed_consumption(vessel_name)
+            analysis = f"The speed consumption of {vessel_name} shows a clear trend. Would you like more details or charts?"
 
-    elif llm_decision['decision'] == 'combined_performance':
-        hull_analysis, _, hull_condition, hull_chart = analyze_hull_performance(vessel_name)
-        speed_analysis, speed_chart = analyze_speed_consumption(vessel_name)
-        analysis = f"{vessel_name} shows combined hull and speed performance data. Would you like more details or performance charts?"
+        elif decision_type == 'combined_performance':
+            hull_analysis, _, hull_condition, _ = analyze_hull_performance(vessel_name)
+            speed_analysis, _ = analyze_speed_consumption(vessel_name)
+            analysis = f"Both hull and speed data for {vessel_name} indicate good performance. Would you like a detailed report or charts?"
 
-    else:
-        analysis = "The query seems to require general vessel information or is unclear. Please refine the query."
+    elif answer_type == "detailed":
+        handle_more_information()  # Provide detailed analysis and charts if requested
     
     return analysis
 
