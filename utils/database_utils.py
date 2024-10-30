@@ -7,20 +7,21 @@ from typing import Optional
 from urllib.parse import quote_plus
 
 def get_db_engine():
-    """Create and return SQLAlchemy engine using Supabase credentials from Streamlit secrets."""
+    """Create and return SQLAlchemy engine."""
     try:
-        # Get database credentials from Streamlit secrets
-        db_credentials = st.secrets["supabase"]
+        # Database credentials
+        host = "aws-0-ap-south-1.pooler.supabase.com"
+        database = "postgres"
+        user = "postgres.conrxbcvuogbzfysomov"
+        password = "wXAryCC8@iwNvj#"
+        port = "6543"
         
-        # URL encode the password to handle special characters
-        encoded_password = quote_plus(db_credentials['password'])
-        encoded_user = quote_plus(db_credentials['user'])
+        # URL encode the password and user to handle special characters
+        encoded_password = quote_plus(password)
+        encoded_user = quote_plus(user)
         
-        # Construct database URL for Supabase with encoded credentials
-        database_url = (
-            f"postgresql://{encoded_user}:{encoded_password}"
-            f"@{db_credentials['host']}:{db_credentials['port']}/{db_credentials['database']}"
-        )
+        # Construct database URL
+        database_url = f"postgresql://{encoded_user}:{encoded_password}@{host}:{port}/{database}"
         
         # Create SQLAlchemy engine
         engine = create_engine(database_url)
@@ -36,7 +37,7 @@ def get_cached_engine():
 
 def fetch_data_from_db(query: str) -> pd.DataFrame:
     """
-    Fetch data from Supabase using SQLAlchemy.
+    Fetch data from database using SQLAlchemy.
     
     Args:
         query (str): SQL query to execute
@@ -73,4 +74,16 @@ def execute_query(query: str, params: Optional[dict] = None) -> bool:
             return True
     except Exception as e:
         st.error(f"Database execution error: {str(e)}")
+        return False
+
+# Add a test function to verify connection
+def test_connection():
+    """Test database connection and return status."""
+    try:
+        engine = get_cached_engine()
+        with engine.connect() as conn:
+            result = conn.execute("SELECT 1").fetchone()
+            return True
+    except Exception as e:
+        st.error(f"Connection test failed: {str(e)}")
         return False
