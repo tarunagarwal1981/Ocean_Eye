@@ -6,12 +6,12 @@ import streamlit as st
 from typing import Optional
 
 def get_db_engine():
-    """Create and return SQLAlchemy engine using Streamlit secrets."""
+    """Create and return SQLAlchemy engine using Supabase credentials from Streamlit secrets."""
     try:
-        # Get database credentials from Streamlit secrets
-        db_credentials = st.secrets["postgres"]
+        # Get database credentials from Streamlit secrets using 'supabase' key
+        db_credentials = st.secrets["supabase"]
         
-        # Construct database URL
+        # Construct database URL for Supabase
         database_url = (
             f"postgresql://{db_credentials['user']}:{db_credentials['password']}"
             f"@{db_credentials['host']}:{db_credentials['port']}/{db_credentials['database']}"
@@ -31,7 +31,7 @@ def get_cached_engine():
 
 def fetch_data_from_db(query: str) -> pd.DataFrame:
     """
-    Fetch data from database using Streamlit secrets configuration.
+    Fetch data from Supabase using SQLAlchemy.
     
     Args:
         query (str): SQL query to execute
