@@ -4,16 +4,21 @@ import pandas as pd
 from sqlalchemy import create_engine
 import streamlit as st
 from typing import Optional
+from urllib.parse import quote_plus
 
 def get_db_engine():
     """Create and return SQLAlchemy engine using Supabase credentials from Streamlit secrets."""
     try:
-        # Get database credentials from Streamlit secrets using 'supabase' key
+        # Get database credentials from Streamlit secrets
         db_credentials = st.secrets["supabase"]
         
-        # Construct database URL for Supabase
+        # URL encode the password to handle special characters
+        encoded_password = quote_plus(db_credentials['password'])
+        encoded_user = quote_plus(db_credentials['user'])
+        
+        # Construct database URL for Supabase with encoded credentials
         database_url = (
-            f"postgresql://{db_credentials['user']}:{db_credentials['password']}"
+            f"postgresql://{encoded_user}:{encoded_password}"
             f"@{db_credentials['host']}:{db_credentials['port']}/{db_credentials['database']}"
         )
         
