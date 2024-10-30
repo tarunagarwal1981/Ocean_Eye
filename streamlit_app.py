@@ -152,8 +152,6 @@ def show_vessel_synopsis(vessel_name: str):
         with st.expander("Vessel Performance Scores", expanded=False):
             if vessel_scores:
                 st.markdown(vessel_analysis)
-                
-                # Create metrics display
                 cols = st.columns(3)
                 metrics = [
                     ("Vessel Score", vessel_scores.get('vessel_score', 0)),
@@ -174,8 +172,6 @@ def show_vessel_synopsis(vessel_name: str):
         with st.expander("Crew Performance Scores", expanded=False):
             if crew_scores:
                 st.markdown(crew_analysis)
-                
-                # Create metrics display
                 cols = st.columns(3)
                 metrics = [
                     ("Crew Skill Index", crew_scores.get('crew_skill_index', 0)),
@@ -322,40 +318,6 @@ def main():
     # Initialize session state variables
     if 'messages' not in st.session_state:
         st.session_state.messages = []
-    if 'show_synopsis' not in st.session_state:
-        st.session_state.show_synopsis = False
-    
-    # Add example queries as buttons
-    st.markdown("### Try these example queries:")
-    col1, col2, col3, col4 = st.columns(4)
-    
-    with col1:
-        if st.button("Show vessel synopsis"):
-            example_query = "Show me the vessel synopsis for Nordic Aurora"
-            st.session_state.messages.append({"role": "human", "content": example_query})
-            response = handle_user_query(example_query)
-            st.session_state.messages.append({"role": "assistant", "content": response})
-    
-    with col2:
-        if st.button("Check hull performance"):
-            example_query = "What's the hull performance of Nordic Aurora?"
-            st.session_state.messages.append({"role": "human", "content": example_query})
-            response = handle_user_query(example_query)
-            st.session_state.messages.append({"role": "assistant", "content": response})
-    
-    with col3:
-        if st.button("View crew performance"):
-            example_query = "Show me the crew performance for Nordic Aurora"
-            st.session_state.messages.append({"role": "human", "content": example_query})
-            response = handle_user_query(example_query)
-            st.session_state.messages.append({"role": "assistant", "content": response})
-
-    with col4:
-        if st.button("Check vessel position"):
-            example_query = "Where is Nordic Aurora now?"
-            st.session_state.messages.append({"role": "human", "content": example_query})
-            response = handle_user_query(example_query)
-            st.session_state.messages.append({"role": "assistant", "content": response})
     
     # Display chat history
     for message in st.session_state.messages:
