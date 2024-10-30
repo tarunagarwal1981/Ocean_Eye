@@ -324,55 +324,102 @@ def main():
     # Set page config
     st.set_page_config(layout="wide", page_title="VesselIQ")
     
-    # Add custom CSS
-    st.markdown("""
+    # Add custom CSS for better UI
+    st.markdown(
+        """
         <style>
-            .block-container { max-width: 1200px; padding-top: 2rem; }
-            .stTitle { font-size: 2rem; font-weight: bold; margin-bottom: 1rem; }
-            .stMarkdown { font-size: 1.1rem; }
+            /* Main container styling */
+            .block-container {
+                max-width: 1200px;
+                padding-top: 2rem;
+            }
+            
+            /* Title styling */
+            .stTitle {
+                font-size: 2rem;
+                font-weight: bold;
+                margin-bottom: 1rem;
+            }
+            
+            /* Text content styling */
+            .stMarkdown {
+                font-size: 1.1rem;
+            }
+            
+            /* Chat container styling */
+            .stChatFloatingInputContainer {
+                max-width: 80% !important;
+                margin-left: auto !important;
+                margin-right: auto !important;
+            }
+            
+            /* Chat message styling */
+            .stChatMessage {
+                max-width: 100% !important;
+                padding: 1rem !important;
+            }
+            
+            /* Status colors */
+            .status-poor { color: #dc3545; font-weight: 500; }
+            .status-average { color: #ffc107; font-weight: 500; }
+            .status-good { color: #28a745; font-weight: 500; }
         </style>
-    """, unsafe_allow_html=True)
+        """,
+        unsafe_allow_html=True
+    )
     
+    # Application header
     st.title("VesselIQ - Smart Vessel Insights")
-    st.markdown("Ask me about vessel performance, speed consumption, crew performance, vessel position, or request a complete vessel synopsis!")
+    st.markdown(
+        "Ask me about vessel performance, speed consumption, crew performance, "
+        "vessel position, or request a complete vessel synopsis!"
+    )
     
-    # Initialize session state variables
+    # Initialize session state for chat history if not exists
     if 'messages' not in st.session_state:
         st.session_state.messages = []
     
     # Display chat history
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
-
-  st.markdown(message["content"])
+            st.markdown(message["content"])
     
     # Handle user input
     if prompt := st.chat_input("What would you like to know about vessel performance?"):
-        # Add user message to chat history
-        st.session_state.messages.append({"role": "human", "content": prompt})
-        with st.chat_message("human"):
-            st.markdown(prompt)
-        
         try:
-            # Check if it's a follow-up request
+            # Display user message
+            st.session_state.messages.append({"role": "human", "content": prompt})
+            with st.chat_message("human"):
+                st.markdown(prompt)
+            
+            # Process user input
             if any(word in prompt.lower() for word in ["more", "details", "charts", "yes", "show me"]):
+                # Handle follow-up questions
                 response = handle_follow_up(prompt)
             else:
-                # Process the main query
+                # Process new queries
                 response = handle_user_query(prompt)
             
-            # Add assistant response to chat history
+            # Display assistant response
             if response:
                 st.session_state.messages.append({"role": "assistant", "content": response})
                 with st.chat_message("assistant"):
                     st.markdown(response)
-            
+        
         except Exception as e:
-            error_message = "I encountered an error processing your request. Please try again."
+            # Handle any errors gracefully
+            error_message = (
+                "I encountered an error processing your request. "
+                "Please try again with a different query."
+            )
+            
+            # Display error in chat
             st.session_state.messages.append({"role": "assistant", "content": error_message})
             with st.chat_message("assistant"):
                 st.markdown(error_message)
+            
+            # Log detailed error
             st.error(f"Error details: {str(e)}")
 
 if __name__ == "__main__":
-    main()         
+    main()
