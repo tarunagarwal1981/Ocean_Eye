@@ -327,38 +327,18 @@ def main():
     st.markdown(
         """
         <style>
-            /* Main container styling */
-            .block-container {
-                max-width: 1200px;
-                padding-top: 2rem;
-            }
-            
-            /* Title styling */
-            .stTitle {
-                font-size: 2rem;
-                font-weight: bold;
-                margin-bottom: 1rem;
-            }
-            
-            /* Text content styling */
-            .stMarkdown {
-                font-size: 1.1rem;
-            }
-            
-            /* Chat container styling */
+            .block-container { max-width: 1200px; padding-top: 2rem; }
+            .stTitle { font-size: 2rem; font-weight: bold; margin-bottom: 1rem; }
+            .stMarkdown { font-size: 1.1rem; }
             .stChatFloatingInputContainer {
                 max-width: 80% !important;
                 margin-left: auto !important;
                 margin-right: auto !important;
             }
-            
-            /* Chat message styling */
             .stChatMessage {
                 max-width: 100% !important;
                 padding: 1rem !important;
             }
-            
-            /* Status colors */
             .status-poor { color: #dc3545; font-weight: 500; }
             .status-average { color: #ffc107; font-weight: 500; }
             .status-good { color: #28a745; font-weight: 500; }
@@ -374,40 +354,98 @@ def main():
         "vessel position, or request a complete vessel synopsis!"
     )
     
-    # Initialize session state for chat history if not exists
+    # Initialize session state for chat history and responses if not exists
     if 'messages' not in st.session_state:
         st.session_state.messages = []
+    if 'current_response' not in st.session_state:
+        st.session_state.current_response = None
+    if 'last_query' not in st.session_state:
+        st.session_state.last_query = None
     
-    # Display chat history
+    # Display chat history and saved responses
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
+            
+            # If this message has an associated response, display it
+            if "response_data" in message:
+                response_data = message["response_data"]
+                
+                # Display charts if they exist
+                if "charts" in response_data:
+                    for chart in response_data["charts"]:
+                        st.pyplot(chart)
+                
+                # Display analysis if it exists
+                if "analysis" in response_data:
+                    st.markdown(response_data["analysis"])
+                
+                # Display metrics if they exist
+                if "metrics" in response_data:
+                    cols = st.columns(3)
+                    for i, (metric, value) in enumerate(response_data["metrics"].items()):
+                        with cols[i % 3]:
+                            st.metric(metric.replace('_', ' ').title(), f"{value:.1f}%")
     
     # Handle user input
     if prompt := st.chat_input("What would you like to know about vessel performance?"):
         try:
-            # Display user message
+            # Add user message to chat history
             st.session_state.messages.append({"role": "human", "content": prompt})
+            st.session_state.last_query = prompt
+            
+            # Display user message
             with st.chat_message("human"):
                 st.markdown(prompt)
             
-            # Process user input
-            if any(word in prompt.lower() for word in ["more", "details", "charts", "yes", "show me"]):
-                # Handle follow-up questions
-                handle_follow_up(prompt)
-            else:
-                # Process new queries
-                handle_user_query(prompt)
+            # Process user input and store response
+            with st.chat_message("assistant"):
+                response_data = {}
+                
+                if any(word in prompt.lower() for word in ["more", "details", "charts", "yes", "show me"]):
+                    # Handle follow-up questions
+                    handle_follow_up(prompt)
+                else:
+                    # Process new queries
+                    decision_data = get_llm_decision(prompt)
+                    vessel_name = decision_data.get("vessel_name")
+                    
+                    if not vessel_name:
+                        st.markdown("I couldn't identify a vessel name in your query. Could you please specify the vessel name?")
+                    else:
+                        # Process based on decision type
+                        if decision_data["decision"] == "hull_performance":
+                            analysis, power_loss, condition, chart = analyze_hull_performance(vessel_name)
+                            response_data = {
+                                "analysis": analysis,
+                                "charts": [chart] if chart else [],
+                                "metrics": {"power_loss": power_loss}
+                            }
+                            st.markdown(analysis)
+                            if chart:
+                                st.pyplot(chart)
+                        
+                        # Add similar blocks for other decision types...
+                        # (speed_consumption, vessel_score, crew_score, etc.)
+                
+                # Store the response in session state
+                if response_data:
+                    st.session_state.messages[-1]["response_data"] = response_data
+                    st.session_state.current_response = response_data
             
         except Exception as e:
-            # Handle any errors gracefully
             error_message = (
                 "I encountered an error processing your request. "
                 "Please try again with a different query."
             )
             
+            # Add error message to chat history
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": error_message
+            })
+            
             # Display error in chat
-            st.session_state.messages.append({"role": "assistant", "content": error_message})
             with st.chat_message("assistant"):
                 st.markdown(error_message)
             
