@@ -312,73 +312,60 @@ def process_specific_analysis(decision_type: str, vessel_name: str) -> dict:
         }
 
 def display_response(response: dict):
-    """Display the appropriate response based on type."""
+    """Display the appropriate response based on type and store in session state."""
+    if 'current_display' not in st.session_state:
+        st.session_state.current_display = {}
+    
+    # Store current response in session state
+    st.session_state.current_display = response
+    
     if response["type"] == "synopsis":
         display_synopsis(response["response_data"])
+        # Store synopsis data
+        if 'synopsis_data' not in st.session_state:
+            st.session_state.synopsis_data = {}
+        st.session_state.synopsis_data[response["content"]] = response["response_data"]
     
     elif response["type"] in ["hull_performance", "speed_consumption"]:
-        st.markdown(response["content"])
-        for chart_name, chart in response["response_data"].get("charts", []):
-            st.pyplot(chart)
-        st.markdown(response["response_data"]["analysis"])
+        container = st.container()
+        with container:
+            st.markdown(response["content"])
+            for chart_name, chart in response["response_data"].get("charts", []):
+                st.pyplot(chart)
+            st.markdown(response["response_data"]["analysis"])
+        
+        # Store analysis data
+        if 'analysis_data' not in st.session_state:
+            st.session_state.analysis_data = {}
+        st.session_state.analysis_data[response["content"]] = response["response_data"]
     
     elif response["type"] in ["vessel_score", "crew_score"]:
-        st.markdown(response["content"])
-        st.markdown(response["response_data"]["analysis"])
-        cols = st.columns(3)
-        for i, (metric, value) in enumerate(response["response_data"]["scores"].items()):
-            with cols[i % 3]:
-                st.metric(metric.replace('_', ' ').title(), f"{value:.1f}%")
+        container = st.container()
+        with container:
+            st.markdown(response["content"])
+            st.markdown(response["response_data"]["analysis"])
+            cols = st.columns(3)
+            for i, (metric, value) in enumerate(response["response_data"]["scores"].items()):
+                with cols[i % 3]:
+                    st.metric(metric.replace('_', ' ').title(), f"{value:.1f}%")
+        
+        # Store score data
+        if 'score_data' not in st.session_state:
+            st.session_state.score_data = {}
+        st.session_state.score_data[response["content"]] = response["response_data"]
     
     elif response["type"] == "position":
-        st.markdown(response["content"])
-        st.markdown(response["response_data"]["analysis"])
-        vessel_name = response["content"].split("of ")[-1]
-        position_agent.show_position(vessel_name)
-
-def handle_user_query(query: str) -> dict:
-    """Process user query and return appropriate response."""
-    decision_data = get_llm_decision(query)
-    vessel_name = decision_data.get("vessel_name")
-    decision_type = decision_data.get("decision", "general_info")
-    
-    if not vessel_name:
-        return {
-            "content": "I couldn't identify a vessel name in your query. Could you please specify the vessel name?",
-            "type": "warning"
-        }
-    
-    try:
-        if decision_type == "vessel_synopsis":
-            response_data = show_vessel_synopsis(vessel_name)
-            if response_data:
-                return {
-                    "content": f"Here's the complete synopsis for {vessel_name}:",
-                    "response_data": response_data,
-                    "type": "synopsis"
-                }
-                
-        elif decision_type in ["hull_performance", "speed_consumption", 
-                             "vessel_score", "crew_score", "position_tracking"]:
-            return process_specific_analysis(decision_type, vessel_name)
-            
-        else:
-            return {
-                "content": """I understand you're asking about vessel information. Please specify what aspect you'd like to know about:
-                - Hull performance
-                - Speed consumption
-                - Vessel score
-                - Crew performance
-                - Current position
-                - Complete vessel synopsis""",
-                "type": "info"
-            }
-            
-    except Exception as e:
-        return {
-            "content": f"Error processing query: {str(e)}",
-            "type": "error"
-        }
+        container = st.container()
+        with container:
+            st.markdown(response["content"])
+            st.markdown(response["response_data"]["analysis"])
+            vessel_name = response["content"].split("of ")[-1]
+            position_agent.show_position(vessel_name)
+        
+        # Store position data
+        if 'position_data' not in st.session_state:
+            st.session_state.position_data = {}
+        st.session_state.position_data[vessel_name] = response["response_data"]
 
 def main():
     """Main application function."""
@@ -389,16 +376,26 @@ def main():
         "vessel position, or request a complete vessel synopsis!"
     )
     
-    # Initialize session state
+    # Initialize session states
     if 'messages' not in st.session_state:
         st.session_state.messages = []
-        
-    # Display chat history
+    if 'current_display' not in st.session_state:
+        st.session_state.current_display = {}
+    if 'display_history' not in st.session_state:
+        st.session_state.display_history = []
+    
+    # Display chat history and stored visualizations
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
             if "response_data" in message and message.get("type"):
-                display_response(message)
+                # Recreate the visualization from stored data
+                display_data = {
+                    "content": message["content"],
+                    "response_data": message["response_data"],
+                    "type": message["type"]
+                }
+                display_response(display_data)
     
     # Handle user input
     if prompt := st.chat_input("What would you like to know about vessel performance?"):
@@ -418,12 +415,17 @@ def main():
                     display_response(response)
             
             # Store response in chat history
-            st.session_state.messages.append({
+            message_data = {
                 "role": "assistant",
                 "content": response["content"],
                 "type": response.get("type"),
                 "response_data": response.get("response_data")
-            })
+            }
+            st.session_state.messages.append(message_data)
+            st.session_state.display_history.append(message_data)
+            
+            # Rerun to update display
+            st.rerun()
 
         except Exception as e:
             error_message = f"An error occurred while processing your request: {str(e)}"
@@ -434,22 +436,24 @@ def main():
                 "type": "error"
             })
 
-def handle_session_state():
-    """Initialize or reset session state if needed."""
+def initialize_session_state():
+    """Initialize all required session state variables."""
     if 'initialized' not in st.session_state:
         st.session_state.initialized = True
         st.session_state.messages = []
-    
-    # Add error recovery
-    if len(st.session_state.messages) > 100:  # Prevent session from growing too large
-        st.session_state.messages = st.session_state.messages[-50:]  # Keep last 50 messages
+        st.session_state.current_display = {}
+        st.session_state.display_history = []
+        st.session_state.synopsis_data = {}
+        st.session_state.analysis_data = {}
+        st.session_state.score_data = {}
+        st.session_state.position_data = {}
 
 if __name__ == "__main__":
     try:
-        handle_session_state()
+        initialize_session_state()
         main()
     except Exception as e:
         st.error(f"An unexpected error occurred: {str(e)}")
-        # Reset session state on critical error
-        st.session_state.messages = []
-        st.session_state.initialized = False
+        # Don't reset session state on error to maintain persistence
+        if not st.session_state.messages:
+            st.session_state.messages = []
