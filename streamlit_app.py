@@ -99,8 +99,8 @@ def get_llm_decision(query: str) -> Dict[str, str]:
         else:
             # Advanced pattern matching for vessel name extraction
             patterns = [
-                r'(?:of|for|about)\s+["\']?([^"\']+?)["\']?\s*(?:\?|$)',  # Matches after 'of', 'for', 'about'
-                r'["\']([^"\']+)["\']',  # Matches quoted names
+                r'(?:of|for|about)\s+["]?([^"']+?)["']?\s*(?:\?|$)',  # Matches after 'of', 'for', 'about'
+                r'["]([^"']+)["']',  # Matches quoted names
                 r'vessel\s+([^\s?]+(?:\s+[^\s?]+)*)',  # Matches after 'vessel'
                 r'mv\s+([^\s?]+(?:\s+[^\s?]+)*)'  # Matches after 'mv'
             ]
@@ -208,7 +208,8 @@ def handle_user_query(query: str):
     response_type = decision_data.get("response_type", "concise")
     
     if not vessel_name:
-        return "I couldn't identify a vessel name in your query. Could you please specify the vessel name?"
+        st.warning("I couldn't identify a vessel name in your query. Could you please specify the vessel name?")
+        return
     
     # Store context in session state
     st.session_state.vessel_name = vessel_name
@@ -219,79 +220,77 @@ def handle_user_query(query: str):
         # Handle different types of requests
         if decision_type == "vessel_synopsis":
             show_vessel_synopsis(vessel_name)
-            return f"Here's the vessel synopsis for {vessel_name}. Let me know if you need any specific information explained."
         
         elif decision_type == "hull_performance":
             hull_analysis, power_loss, hull_condition, hull_chart = analyze_hull_performance(vessel_name)
             if response_type == "concise":
-                return f"The hull of {vessel_name} is in {hull_condition} condition with {power_loss:.1f}% power loss. Would you like to see detailed analysis and charts?"
+                st.markdown(f"The hull of {vessel_name} is in {hull_condition} condition with {power_loss:.1f}% power loss. Would you like to see detailed analysis and charts?")
             else:
                 st.pyplot(hull_chart)
-                return hull_analysis
+                st.markdown(hull_analysis)
         
         elif decision_type == "speed_consumption":
             speed_analysis, speed_charts = analyze_speed_consumption(vessel_name)
             if response_type == "concise":
-                return f"I've analyzed the speed consumption profile for {vessel_name}. Would you like to see the detailed analysis and charts?"
+                st.markdown(f"I've analyzed the speed consumption profile for {vessel_name}. Would you like to see the detailed analysis and charts?")
             else:
                 st.pyplot(speed_charts)
-                return speed_analysis
+                st.markdown(speed_analysis)
         
         elif decision_type == "vessel_score":
             scores, analysis = analyze_vessel_score(vessel_name)
             if scores:
                 if response_type == "concise":
-                    return f"The overall vessel score for {vessel_name} is {scores['vessel_score']:.1f}%. Would you like to see the detailed analysis?"
+                    st.markdown(f"The overall vessel score for {vessel_name} is {scores['vessel_score']:.1f}%. Would you like to see the detailed analysis?")
                 else:
                     st.markdown(analysis)
-                    return "I've displayed the detailed vessel score analysis above. Let me know if you need any clarification."
             else:
-                return "Unable to retrieve vessel score data."
+                st.warning("Unable to retrieve vessel score data.")
         
         elif decision_type == "crew_score":
             scores, analysis = analyze_crew_score(vessel_name)
             if scores:
                 if response_type == "concise":
-                    return f"The crew skill index for {vessel_name} is {scores['crew_skill_index']:.1f}%. Would you like to see the detailed analysis?"
+                    st.markdown(f"The crew skill index for {vessel_name} is {scores['crew_skill_index']:.1f}%. Would you like to see the detailed analysis?")
                 else:
                     st.markdown(analysis)
-                    return "I've displayed the detailed crew score analysis above. Let me know if you need any clarification."
             else:
-                return "Unable to retrieve crew score data."
+                st.warning("Unable to retrieve crew score data.")
         
         elif decision_type == "position_tracking":
             position_agent.show_position(vessel_name)
             analysis = position_agent.get_position_analysis(vessel_name)
-            return analysis
+            st.markdown(analysis)
         
         elif decision_type == "combined_performance":
             hull_analysis, _, hull_condition, hull_chart = analyze_hull_performance(vessel_name)
             speed_analysis, speed_charts = analyze_speed_consumption(vessel_name)
             
             if response_type == "concise":
-                return f"I have analyzed both hull and speed performance for {vessel_name}. Would you like to see the detailed analysis and charts?"
+                st.markdown(f"I have analyzed both hull and speed performance for {vessel_name}. Would you like to see the detailed analysis and charts?")
             else:
                 st.pyplot(hull_chart)
                 st.pyplot(speed_charts)
-                return f"{hull_analysis}\n\n{speed_analysis}"
+                st.markdown(f"{hull_analysis}\n\n{speed_analysis}")
         
         else:
-            return """I understand you're asking about vessel information. Please specify what aspect you'd like to know about:
+            st.markdown("""I understand you're asking about vessel information. Please specify what aspect you'd like to know about:
             - Hull performance
             - Speed consumption
             - Vessel score
             - Crew performance
             - Current position
-            - Complete vessel synopsis"""
+            - Complete vessel synopsis""")
             
     except Exception as e:
         st.error(f"Error processing query: {str(e)}")
-        return "I encountered an error while processing your request. Please try again or rephrase your query."
+        st.warning("I encountered an error while processing your request. Please try again or rephrase your query.")
 
 def handle_follow_up(query: str):
     """Handle follow-up requests for more information or charts."""
     if 'vessel_name' not in st.session_state or 'decision_type' not in st.session_state:
-        return "Could you please provide your initial question again?"
+        st.warning("Could you please provide your initial question again?")
+        return
     
     vessel_name = st.session_state.vessel_name
     decision_type = st.session_state.decision_type
@@ -318,7 +317,7 @@ def handle_follow_up(query: str):
         st.pyplot(hull_chart)
         st.pyplot(speed_charts)
 
-    return "I've updated the information above. Is there anything specific you'd like me to explain?"
+    st.markdown("I've updated the information above. Is there anything specific you'd like me to explain?")
 
 def main():
     # Set page config
@@ -395,17 +394,11 @@ def main():
             # Process user input
             if any(word in prompt.lower() for word in ["more", "details", "charts", "yes", "show me"]):
                 # Handle follow-up questions
-                response = handle_follow_up(prompt)
+                handle_follow_up(prompt)
             else:
                 # Process new queries
-                response = handle_user_query(prompt)
+                handle_user_query(prompt)
             
-            # Display assistant response
-            if response:
-                st.session_state.messages.append({"role": "assistant", "content": response})
-                with st.chat_message("assistant"):
-                    st.markdown(response)
-        
         except Exception as e:
             # Handle any errors gracefully
             error_message = (
