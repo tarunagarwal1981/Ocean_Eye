@@ -99,8 +99,8 @@ def get_llm_decision(query: str) -> Dict[str, str]:
         else:
             # Advanced pattern matching for vessel name extraction
             patterns = [
-                r'(?:of|for|about)\s+["]?([^"']+?)["']?\s*(?:\?|$)',  # Matches after 'of', 'for', 'about'
-                r'["]([^"']+)["]',  # Matches quoted names
+                r'(?:of|for|about)\s+"?([^"]+?)"?\s*(?:\?|$)',  # Matches after 'of', 'for', 'about'
+                r'"([^"]+)"',  # Matches quoted names
                 r'vessel\s+([^\s?]+(?:\s+[^\s?]+)*)',  # Matches after 'vessel'
                 r'mv\s+([^\s?]+(?:\s+[^\s?]+)*)'  # Matches after 'mv'
             ]
