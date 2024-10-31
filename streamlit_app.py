@@ -1,6 +1,14 @@
 # app.py
 
 import streamlit as st
+# Set page config as the very first Streamlit command
+st.set_page_config(
+    page_title="VesselIQ",
+    page_icon="🚢",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
+
 import openai
 import os
 import pandas as pd
@@ -20,30 +28,63 @@ from utils.nlp_utils import clean_vessel_name
 # Initialize agents
 position_agent = PositionTrackingAgent()
 
+# Add custom CSS
+st.markdown(
+    """
+    <style>
+        .block-container { max-width: 1200px; padding-top: 2rem; }
+        .stTitle { font-size: 2rem; font-weight: bold; margin-bottom: 1rem; }
+        .stMarkdown { font-size: 1.1rem; }
+        .stChatFloatingInputContainer {
+            max-width: 80% !important;
+            margin-left: auto !important;
+            margin-right: auto !important;
+        }
+        .stChatMessage {
+            max-width: 100% !important;
+            padding: 1rem !important;
+        }
+        .status-poor { color: #dc3545; font-weight: 500; }
+        .status-average { color: #ffc107; font-weight: 500; }
+        .status-good { color: #28a745; font-weight: 500; }
+        h1 { margin-bottom: 2rem; }
+        .stExpander { margin-bottom: 1rem; }
+        .stMetric { background-color: #f8f9fa; padding: 1rem; border-radius: 0.5rem; }
+        .stPlot { background-color: white; padding: 1rem; border-radius: 0.5rem; }
+        .streamlit-expanderHeader {
+            background-color: #f8f9fa;
+            border-radius: 0.5rem;
+            margin-bottom: 0.5rem;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 # LLM Decision Prompt
 DECISION_PROMPT = """
 You are an AI assistant specialized in vessel performance analysis. The user will ask a query related to vessel performance. Based on the user's query, do two things:
-1. Extract only the vessel name from the query. The vessel name may appear after the word 'of' (e.g., 'hull performance of Trammo Marycam' => 'Trammo Marycam').
-2. Determine what type of performance information is needed to answer the user's query.
+1. Extract only the vessel name from the query. The vessel name may appear after words like 'of', 'for', or 'about'.
+2. Determine what type of performance information is needed.
 
 Choose the decision based on these rules:
-- If the user asks for "vessel synopsis", "vessel summary", or "vessel overview", return "vessel_synopsis"
-- If the user asks for "vessel performance" or a combination of "hull and speed performance," return "combined_performance"
-- If the user asks only about "hull performance" or "hull and propeller performance," return "hull_performance"
-- If the user asks only about "speed consumption," return "speed_consumption"
-- If the user asks about "vessel score", "vessel rating", or "vessel KPIs", return "vessel_score"
-- If the user asks about "crew performance", "crew score", or "crew rating", return "crew_score"
-- If the user asks about "position", "location", or "where is", return "position_tracking"
+- For "vessel synopsis", "vessel summary", or "vessel overview" → return "vessel_synopsis"
+- For "vessel performance" or "hull and speed performance" → return "combined_performance"
+- For "hull performance" or "hull and propeller performance" → return "hull_performance"
+- For "speed consumption" → return "speed_consumption"
+- For "vessel score", "vessel rating", or "vessel KPIs" → return "vessel_score"
+- For "crew performance", "crew score", or "crew rating" → return "crew_score"
+- For "position", "location", or "where is" → return "position_tracking"
 
 Output format:
 {
-    "vessel_name": "<vessel_name>",
+    "vessel_name": "<cleaned_vessel_name>",
     "decision": "<decision_type>",
     "response_type": "concise" or "detailed"
 }
 """
 
-def get_api_key():
+def get_api_key() -> str:
     """Get OpenAI API key from secrets or environment variables."""
     if 'openai' in st.secrets:
         return st.secrets['openai']['api_key']
@@ -270,6 +311,31 @@ def process_specific_analysis(decision_type: str, vessel_name: str) -> dict:
             "type": "error"
         }
 
+def display_response(response: dict):
+    """Display the appropriate response based on type."""
+    if response["type"] == "synopsis":
+        display_synopsis(response["response_data"])
+    
+    elif response["type"] in ["hull_performance", "speed_consumption"]:
+        st.markdown(response["content"])
+        for chart_name, chart in response["response_data"].get("charts", []):
+            st.pyplot(chart)
+        st.markdown(response["response_data"]["analysis"])
+    
+    elif response["type"] in ["vessel_score", "crew_score"]:
+        st.markdown(response["content"])
+        st.markdown(response["response_data"]["analysis"])
+        cols = st.columns(3)
+        for i, (metric, value) in enumerate(response["response_data"]["scores"].items()):
+            with cols[i % 3]:
+                st.metric(metric.replace('_', ' ').title(), f"{value:.1f}%")
+    
+    elif response["type"] == "position":
+        st.markdown(response["content"])
+        st.markdown(response["response_data"]["analysis"])
+        vessel_name = response["content"].split("of ")[-1]
+        position_agent.show_position(vessel_name)
+
 def handle_user_query(query: str) -> dict:
     """Process user query and return appropriate response."""
     decision_data = get_llm_decision(query)
@@ -314,59 +380,8 @@ def handle_user_query(query: str) -> dict:
             "type": "error"
         }
 
-def display_response(response: dict):
-    """Display the appropriate response based on type."""
-    if response["type"] == "synopsis":
-        display_synopsis(response["response_data"])
-    
-    elif response["type"] in ["hull_performance", "speed_consumption"]:
-        st.markdown(response["content"])
-        for chart_name, chart in response["response_data"].get("charts", []):
-            st.pyplot(chart)
-        st.markdown(response["response_data"]["analysis"])
-    
-    elif response["type"] in ["vessel_score", "crew_score"]:
-        st.markdown(response["content"])
-        st.markdown(response["response_data"]["analysis"])
-        cols = st.columns(3)
-        for i, (metric, value) in enumerate(response["response_data"]["scores"].items()):
-            with cols[i % 3]:
-                st.metric(metric.replace('_', ' ').title(), f"{value:.1f}%")
-    
-    elif response["type"] == "position":
-        st.markdown(response["content"])
-        st.markdown(response["response_data"]["analysis"])
-        vessel_name = response["content"].split("of ")[-1]
-        position_agent.show_position(vessel_name)
-
 def main():
-    # Set page config
-    st.set_page_config(layout="wide", page_title="VesselIQ")
-    
-    # Add custom CSS
-    st.markdown(
-        """
-        <style>
-            .block-container { max-width: 1200px; padding-top: 2rem; }
-            .stTitle { font-size: 2rem; font-weight: bold; margin-bottom: 1rem; }
-            .stMarkdown { font-size: 1.1rem; }
-            .stChatFloatingInputContainer {
-                max-width: 80% !important;
-                margin-left: auto !important;
-                margin-right: auto !important;
-            }
-            .stChatMessage {
-                max-width: 100% !important;
-                padding: 1rem !important;
-            }
-            .status-poor { color: #dc3545; font-weight: 500; }
-            .status-average { color: #ffc107; font-weight: 500; }
-            .status-good { color: #28a745; font-weight: 500; }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
-    
+    """Main application function."""
     # Application header
     st.title("VesselIQ - Smart Vessel Insights")
     st.markdown(
@@ -377,97 +392,64 @@ def main():
     # Initialize session state
     if 'messages' not in st.session_state:
         st.session_state.messages = []
-    
+        
     # Display chat history
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
-            if "response_data" in message:
+            if "response_data" in message and message.get("type"):
                 display_response(message)
-    
     
     # Handle user input
     if prompt := st.chat_input("What would you like to know about vessel performance?"):
-        # Add user message
-        st.session_state.messages.append({"role": "human", "content": prompt})
-        with st.chat_message("human"):
-            st.markdown(prompt)
-        
-        # Process query and add response
-        response = handle_user_query(prompt)
-        
-        # Display assistant response
-        with st.chat_message("assistant"):
-            st.markdown(response["content"])
-            if "response_data" in response:
-                display_response(response)
-        
-        # Store response in chat history
-        st.session_state.messages.append({
-            "role": "assistant",
-            "content": response["content"],
-            "type": response.get("type"),
-            "response_data": response.get("response_data")
-        })
-        
-        # Rerun the app to update the display
-        st.rerun()
+        try:
+            # Add user message
+            st.session_state.messages.append({"role": "human", "content": prompt})
+            with st.chat_message("human"):
+                st.markdown(prompt)
+            
+            # Process query and add response
+            response = handle_user_query(prompt)
+            
+            # Display assistant response
+            with st.chat_message("assistant"):
+                st.markdown(response["content"])
+                if "response_data" in response:
+                    display_response(response)
+            
+            # Store response in chat history
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": response["content"],
+                "type": response.get("type"),
+                "response_data": response.get("response_data")
+            })
 
-def initialize_page():
-    """Initialize the page with required styles and configurations."""
-    # Set page config
-    st.set_page_config(
-        page_title="VesselIQ",
-        page_icon="🚢",
-        layout="wide",
-        initial_sidebar_state="collapsed"
-    )
+        except Exception as e:
+            error_message = f"An error occurred while processing your request: {str(e)}"
+            st.error(error_message)
+            st.session_state.messages.append({
+                "role": "assistant",
+                "content": error_message,
+                "type": "error"
+            })
+
+def handle_session_state():
+    """Initialize or reset session state if needed."""
+    if 'initialized' not in st.session_state:
+        st.session_state.initialized = True
+        st.session_state.messages = []
     
-    # Add custom CSS
-    st.markdown(
-        """
-        <style>
-            .block-container { max-width: 1200px; padding-top: 2rem; }
-            .stTitle { font-size: 2rem; font-weight: bold; margin-bottom: 1rem; }
-            .stMarkdown { font-size: 1.1rem; }
-            .stChatFloatingInputContainer {
-                max-width: 80% !important;
-                margin-left: auto !important;
-                margin-right: auto !important;
-            }
-            .stChatMessage {
-                max-width: 100% !important;
-                padding: 1rem !important;
-            }
-            .status-poor { color: #dc3545; font-weight: 500; }
-            .status-average { color: #ffc107; font-weight: 500; }
-            .status-good { color: #28a745; font-weight: 500; }
-            
-            /* Additional styling for better visual hierarchy */
-            h1 { margin-bottom: 2rem; }
-            .stExpander { margin-bottom: 1rem; }
-            .stMetric { background-color: #f8f9fa; padding: 1rem; border-radius: 0.5rem; }
-            
-            /* Improve chart visibility */
-            .stPlot { background-color: white; padding: 1rem; border-radius: 0.5rem; }
-            
-            /* Better spacing for expandable sections */
-            .streamlit-expanderHeader {
-                background-color: #f8f9fa;
-                border-radius: 0.5rem;
-                margin-bottom: 0.5rem;
-            }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
+    # Add error recovery
+    if len(st.session_state.messages) > 100:  # Prevent session from growing too large
+        st.session_state.messages = st.session_state.messages[-50:]  # Keep last 50 messages
 
 if __name__ == "__main__":
     try:
-        initialize_page()
+        handle_session_state()
         main()
     except Exception as e:
         st.error(f"An unexpected error occurred: {str(e)}")
-        if "messages" in st.session_state:
-            # Clear messages if there's an error to prevent error loop
-            st.session_state.messages = []
+        # Reset session state on critical error
+        st.session_state.messages = []
+        st.session_state.initialized = False
