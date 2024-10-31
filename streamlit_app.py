@@ -24,15 +24,7 @@ position_agent = PositionTrackingAgent()
 DECISION_PROMPT = """
 You are an AI assistant specialized in vessel performance analysis. The user will ask a query related to vessel performance. Based on the user's query, do two things:
 1. Extract only the vessel name from the query. The vessel name may appear after the word 'of' (e.g., 'hull performance of Trammo Marycam' => 'Trammo Marycam').
-2. Determine what type of performance information is needed to answer the user's query. The options are:
-   - Hull performance
-   - Speed consumption
-   - Vessel score
-   - Crew score
-   - Position tracking
-   - Combined performance (hull and speed)
-   - Vessel synopsis (complete vessel overview)
-   - General vessel information
+2. Determine what type of performance information is needed to answer the user's query.
 
 Choose the decision based on these rules:
 - If the user asks for "vessel synopsis", "vessel summary", or "vessel overview", return "vessel_synopsis"
@@ -43,23 +35,11 @@ Choose the decision based on these rules:
 - If the user asks about "crew performance", "crew score", or "crew rating", return "crew_score"
 - If the user asks about "position", "location", or "where is", return "position_tracking"
 
-Naming pattern rules:
-1. Remove any unnecessary prefixes or suffixes
-2. If the name is between quotes, extract only the content within quotes
-3. If the name follows keywords like "for", "of", "about", extract the subsequent text
-4. Convert vessel names to proper case format
-
-Example extractions:
-- "Show me hull performance of mv trammo marycam" => "Trammo Marycam"
-- "Where is 'Nordic Aurora' now?" => "Nordic Aurora"
-- "Performance report for vessel oceanica explorer" => "Oceanica Explorer"
-
-Output your response as a JSON object with the following structure:
+Output format:
 {
     "vessel_name": "<vessel_name>",
-    "decision": "hull_performance" or "speed_consumption" or "combined_performance" or "vessel_synopsis" or "vessel_score" or "crew_score" or "position_tracking" or "general_info",
-    "response_type": "concise" or "detailed",
-    "explanation": "Brief explanation of why you made this decision"
+    "decision": "<decision_type>",
+    "response_type": "concise" or "detailed"
 }
 """
 
@@ -72,17 +52,16 @@ def get_api_key():
         raise ValueError("API key not found. Set OPENAI_API_KEY as an environment variable.")
     return api_key
 
-# Initialize OpenAI API
-openai.api_key = get_api_key()
-
 def get_llm_decision(query: str) -> Dict[str, str]:
     """Get decision from LLM about query type and vessel name."""
-    messages = [
-        {"role": "system", "content": DECISION_PROMPT},
-        {"role": "user", "content": query}
-    ]
-    
     try:
+        openai.api_key = get_api_key()
+        
+        messages = [
+            {"role": "system", "content": DECISION_PROMPT},
+            {"role": "user", "content": query}
+        ]
+        
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
             messages=messages,
@@ -93,16 +72,16 @@ def get_llm_decision(query: str) -> Dict[str, str]:
         decision_text = response.choices[0].message['content'].strip()
         decision_data = json.loads(decision_text)
         
-        # Verify and clean vessel name
+        # Clean vessel name
         if decision_data.get('vessel_name'):
             decision_data['vessel_name'] = clean_vessel_name(decision_data['vessel_name'])
         else:
-            # Advanced pattern matching for vessel name extraction
+            # Extract vessel name using patterns
             patterns = [
-                r'(?:of|for|about)\s+"?([^"]+?)"?\s*(?:\?|$)',  # Matches after 'of', 'for', 'about'
-                r'"([^"]+)"',  # Matches quoted names
-                r'vessel\s+([^\s?]+(?:\s+[^\s?]+)*)',  # Matches after 'vessel'
-                r'mv\s+([^\s?]+(?:\s+[^\s?]+)*)'  # Matches after 'mv'
+                r'(?:of|for|about)\s+"?([^"]+?)"?\s*(?:\?|$)',
+                r'"([^"]+)"',
+                r'vessel\s+([^\s?]+(?:\s+[^\s?]+)*)',
+                r'mv\s+([^\s?]+(?:\s+[^\s?]+)*)'
             ]
             
             for pattern in patterns:
@@ -110,12 +89,6 @@ def get_llm_decision(query: str) -> Dict[str, str]:
                 if match:
                     decision_data['vessel_name'] = clean_vessel_name(match.group(1))
                     break
-            
-            if not decision_data.get('vessel_name'):
-                # Last resort: try to find any capitalized words sequence
-                capitalized_words = re.findall(r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)', query)
-                if capitalized_words:
-                    decision_data['vessel_name'] = clean_vessel_name(capitalized_words[0])
         
         return decision_data
         
@@ -124,206 +97,253 @@ def get_llm_decision(query: str) -> Dict[str, str]:
         return {
             "vessel_name": None,
             "decision": "general_info",
-            "response_type": "concise",
-            "explanation": "Error occurred, defaulting to general info"
+            "response_type": "concise"
         }
 
-def show_vessel_synopsis(vessel_name: str):
-    """Display comprehensive vessel synopsis using data from all agents."""
+def show_vessel_synopsis(vessel_name: str) -> dict:
+    """Generate comprehensive vessel synopsis data."""
+    response_data = {}
     try:
-        # Get hull performance data
+        # Get all analysis data
         hull_analysis, power_loss, hull_condition, hull_chart = analyze_hull_performance(vessel_name)
-        
-        # Get speed consumption data
         speed_analysis, speed_charts = analyze_speed_consumption(vessel_name)
-        
-        # Get vessel score data
         vessel_scores, vessel_analysis = analyze_vessel_score(vessel_name)
-        
-        # Get crew score data
         crew_scores, crew_analysis = analyze_crew_score(vessel_name)
         
-        # Create header with vessel name
-        st.header(f"Vessel Synopsis - {vessel_name.upper()}")
+        # Compile all data
+        response_data = {
+            "charts": [],
+            "analyses": {},
+            "scores": {},
+            "title": f"Vessel Synopsis - {vessel_name.upper()}"
+        }
         
-        # Add CSS for status colors
-        st.markdown("""
-            <style>
-                .status-poor { color: #dc3545; font-weight: 500; }
-                .status-average { color: #ffc107; font-weight: 500; }
-                .status-good { color: #28a745; font-weight: 500; }
-            </style>
-        """, unsafe_allow_html=True)
+        # Position data
+        position_info = position_agent.get_position_analysis(vessel_name)
+        response_data["analyses"]["position"] = position_info
         
-        # Display position information
-        with st.expander("Last Reported Position", expanded=False):
-            position_agent.show_position(vessel_name)
+        # Hull performance data
+        if hull_chart:
+            response_data["charts"].append(("hull", hull_chart))
+            response_data["analyses"]["hull"] = hull_analysis
+            response_data["scores"]["hull_power_loss"] = power_loss
+            response_data["scores"]["hull_condition"] = hull_condition
         
-        # Display hull performance
-        with st.expander("Hull Performance", expanded=False):
-            if hull_chart:
-                st.pyplot(hull_chart)
-                st.markdown(hull_analysis)
-            else:
-                st.warning("No hull performance data available")
+        # Speed consumption data
+        if speed_charts:
+            response_data["charts"].append(("speed", speed_charts))
+            response_data["analyses"]["speed"] = speed_analysis
         
-        # Display speed consumption
-        with st.expander("Speed Consumption Profile", expanded=False):
-            if speed_charts:
-                st.pyplot(speed_charts)
-                st.markdown(speed_analysis)
-            else:
-                st.warning("No speed consumption data available")
+        # Vessel scores
+        if vessel_scores:
+            response_data["scores"]["vessel"] = vessel_scores
+            response_data["analyses"]["vessel"] = vessel_analysis
         
-        # Display vessel score
-        with st.expander("Vessel Performance Scores", expanded=False):
-            if vessel_scores:
-                st.markdown(vessel_analysis)
-                cols = st.columns(3)
-                for i, (metric, value) in enumerate(vessel_scores.items()):
-                    with cols[i % 3]:
-                        st.metric(metric.replace('_', ' ').title(), f"{value:.1f}%")
-            else:
-                st.warning("No vessel score data available")
+        # Crew scores
+        if crew_scores:
+            response_data["scores"]["crew"] = crew_scores
+            response_data["analyses"]["crew"] = crew_analysis
         
-        # Display crew score
-        with st.expander("Crew Performance Scores", expanded=False):
-            if crew_scores:
-                st.markdown(crew_analysis)
-                cols = st.columns(3)
-                for i, (metric, value) in enumerate(crew_scores.items()):
-                    with cols[i % 3]:
-                        st.metric(metric.replace('_', ' ').title(), f"{value:.1f}%")
-            else:
-                st.warning("No crew score data available")
-                
+        return response_data
+        
     except Exception as e:
         st.error(f"Error generating vessel synopsis: {str(e)}")
+        return None
 
-def handle_user_query(query: str):
+def display_synopsis(response_data: dict):
+    """Display stored synopsis data."""
+    if not response_data:
+        return
+    
+    st.header(response_data["title"])
+    
+    # Position information
+    with st.expander("Last Reported Position", expanded=True):
+        if "position" in response_data["analyses"]:
+            st.markdown(response_data["analyses"]["position"])
+            position_agent.show_position(response_data["title"].split('-')[1].strip())
+        else:
+            st.warning("No position data available")
+    
+    # Hull performance
+    with st.expander("Hull Performance", expanded=True):
+        hull_chart = next((chart for name, chart in response_data["charts"] if name == "hull"), None)
+        if hull_chart:
+            st.pyplot(hull_chart)
+            st.markdown(response_data["analyses"]["hull"])
+        else:
+            st.warning("No hull performance data available")
+    
+    # Speed consumption
+    with st.expander("Speed Consumption Profile", expanded=True):
+        speed_chart = next((chart for name, chart in response_data["charts"] if name == "speed"), None)
+        if speed_chart:
+            st.pyplot(speed_chart)
+            st.markdown(response_data["analyses"]["speed"])
+        else:
+            st.warning("No speed consumption data available")
+    
+    # Vessel scores
+    with st.expander("Vessel Performance Scores", expanded=True):
+        if "vessel" in response_data["scores"]:
+            st.markdown(response_data["analyses"]["vessel"])
+            cols = st.columns(3)
+            for i, (metric, value) in enumerate(response_data["scores"]["vessel"].items()):
+                with cols[i % 3]:
+                    st.metric(metric.replace('_', ' ').title(), f"{value:.1f}%")
+        else:
+            st.warning("No vessel score data available")
+    
+    # Crew scores
+    with st.expander("Crew Performance Scores", expanded=True):
+        if "crew" in response_data["scores"]:
+            st.markdown(response_data["analyses"]["crew"])
+            cols = st.columns(3)
+            for i, (metric, value) in enumerate(response_data["scores"]["crew"].items()):
+                with cols[i % 3]:
+                    st.metric(metric.replace('_', ' ').title(), f"{value:.1f}%")
+        else:
+            st.warning("No crew score data available")
+
+def process_specific_analysis(decision_type: str, vessel_name: str) -> dict:
+    """Process specific analysis types and return response data."""
+    try:
+        if decision_type == "hull_performance":
+            analysis, power_loss, condition, chart = analyze_hull_performance(vessel_name)
+            return {
+                "content": f"Hull Performance Analysis for {vessel_name}",
+                "response_data": {
+                    "analysis": analysis,
+                    "charts": [("hull", chart)] if chart else [],
+                    "scores": {"power_loss": power_loss, "condition": condition}
+                },
+                "type": "hull_performance"
+            }
+            
+        elif decision_type == "speed_consumption":
+            analysis, charts = analyze_speed_consumption(vessel_name)
+            return {
+                "content": f"Speed Consumption Analysis for {vessel_name}",
+                "response_data": {
+                    "analysis": analysis,
+                    "charts": [("speed", charts)] if charts else []
+                },
+                "type": "speed_consumption"
+            }
+            
+        elif decision_type == "vessel_score":
+            scores, analysis = analyze_vessel_score(vessel_name)
+            return {
+                "content": f"Vessel Score Analysis for {vessel_name}",
+                "response_data": {
+                    "analysis": analysis,
+                    "scores": scores
+                },
+                "type": "vessel_score"
+            }
+            
+        elif decision_type == "crew_score":
+            scores, analysis = analyze_crew_score(vessel_name)
+            return {
+                "content": f"Crew Performance Analysis for {vessel_name}",
+                "response_data": {
+                    "analysis": analysis,
+                    "scores": scores
+                },
+                "type": "crew_score"
+            }
+            
+        elif decision_type == "position_tracking":
+            analysis = position_agent.get_position_analysis(vessel_name)
+            return {
+                "content": f"Current Position of {vessel_name}",
+                "response_data": {
+                    "analysis": analysis,
+                    "position_data": True
+                },
+                "type": "position"
+            }
+            
+    except Exception as e:
+        return {
+            "content": f"Error processing {decision_type}: {str(e)}",
+            "type": "error"
+        }
+
+def handle_user_query(query: str) -> dict:
     """Process user query and return appropriate response."""
     decision_data = get_llm_decision(query)
     vessel_name = decision_data.get("vessel_name")
     decision_type = decision_data.get("decision", "general_info")
-    response_type = decision_data.get("response_type", "concise")
     
     if not vessel_name:
-        st.warning("I couldn't identify a vessel name in your query. Could you please specify the vessel name?")
-        return
-    
-    # Store context in session state
-    st.session_state.vessel_name = vessel_name
-    st.session_state.decision_type = decision_type
-    st.session_state.response_type = response_type
+        return {
+            "content": "I couldn't identify a vessel name in your query. Could you please specify the vessel name?",
+            "type": "warning"
+        }
     
     try:
-        # Handle different types of requests
         if decision_type == "vessel_synopsis":
-            show_vessel_synopsis(vessel_name)
-        
-        elif decision_type == "hull_performance":
-            hull_analysis, power_loss, hull_condition, hull_chart = analyze_hull_performance(vessel_name)
-            if response_type == "concise":
-                st.markdown(f"The hull of {vessel_name} is in {hull_condition} condition with {power_loss:.1f}% power loss. Would you like to see detailed analysis and charts?")
-            else:
-                st.pyplot(hull_chart)
-                st.markdown(hull_analysis)
-        
-        elif decision_type == "speed_consumption":
-            speed_analysis, speed_charts = analyze_speed_consumption(vessel_name)
-            if response_type == "concise":
-                st.markdown(f"I've analyzed the speed consumption profile for {vessel_name}. Would you like to see the detailed analysis and charts?")
-            else:
-                st.pyplot(speed_charts)
-                st.markdown(speed_analysis)
-        
-        elif decision_type == "vessel_score":
-            scores, analysis = analyze_vessel_score(vessel_name)
-            if scores:
-                if response_type == "concise":
-                    st.markdown(f"The overall vessel score for {vessel_name} is {scores['vessel_score']:.1f}%. Would you like to see the detailed analysis?")
-                else:
-                    st.markdown(analysis)
-            else:
-                st.warning("Unable to retrieve vessel score data.")
-        
-        elif decision_type == "crew_score":
-            scores, analysis = analyze_crew_score(vessel_name)
-            if scores:
-                if response_type == "concise":
-                    st.markdown(f"The crew skill index for {vessel_name} is {scores['crew_skill_index']:.1f}%. Would you like to see the detailed analysis?")
-                else:
-                    st.markdown(analysis)
-            else:
-                st.warning("Unable to retrieve crew score data.")
-        
-        elif decision_type == "position_tracking":
-            position_agent.show_position(vessel_name)
-            analysis = position_agent.get_position_analysis(vessel_name)
-            st.markdown(analysis)
-        
-        elif decision_type == "combined_performance":
-            hull_analysis, _, hull_condition, hull_chart = analyze_hull_performance(vessel_name)
-            speed_analysis, speed_charts = analyze_speed_consumption(vessel_name)
+            response_data = show_vessel_synopsis(vessel_name)
+            if response_data:
+                return {
+                    "content": f"Here's the complete synopsis for {vessel_name}:",
+                    "response_data": response_data,
+                    "type": "synopsis"
+                }
+                
+        elif decision_type in ["hull_performance", "speed_consumption", 
+                             "vessel_score", "crew_score", "position_tracking"]:
+            return process_specific_analysis(decision_type, vessel_name)
             
-            if response_type == "concise":
-                st.markdown(f"I have analyzed both hull and speed performance for {vessel_name}. Would you like to see the detailed analysis and charts?")
-            else:
-                st.pyplot(hull_chart)
-                st.pyplot(speed_charts)
-                st.markdown(f"{hull_analysis}\n\n{speed_analysis}")
-        
         else:
-            st.markdown("""I understand you're asking about vessel information. Please specify what aspect you'd like to know about:
-            - Hull performance
-            - Speed consumption
-            - Vessel score
-            - Crew performance
-            - Current position
-            - Complete vessel synopsis""")
+            return {
+                "content": """I understand you're asking about vessel information. Please specify what aspect you'd like to know about:
+                - Hull performance
+                - Speed consumption
+                - Vessel score
+                - Crew performance
+                - Current position
+                - Complete vessel synopsis""",
+                "type": "info"
+            }
             
     except Exception as e:
-        st.error(f"Error processing query: {str(e)}")
-        st.warning("I encountered an error while processing your request. Please try again or rephrase your query.")
+        return {
+            "content": f"Error processing query: {str(e)}",
+            "type": "error"
+        }
 
-def handle_follow_up(query: str):
-    """Handle follow-up requests for more information or charts."""
-    if 'vessel_name' not in st.session_state or 'decision_type' not in st.session_state:
-        st.warning("Could you please provide your initial question again?")
-        return
+def display_response(response: dict):
+    """Display the appropriate response based on type."""
+    if response["type"] == "synopsis":
+        display_synopsis(response["response_data"])
     
-    vessel_name = st.session_state.vessel_name
-    decision_type = st.session_state.decision_type
+    elif response["type"] in ["hull_performance", "speed_consumption"]:
+        st.markdown(response["content"])
+        for chart_name, chart in response["response_data"].get("charts", []):
+            st.pyplot(chart)
+        st.markdown(response["response_data"]["analysis"])
     
-    if decision_type == "vessel_synopsis":
-        show_vessel_synopsis(vessel_name)
-    elif decision_type == "hull_performance":
-        _, _, _, hull_chart = analyze_hull_performance(vessel_name)
-        st.pyplot(hull_chart)
-    elif decision_type == "speed_consumption":
-        _, speed_charts = analyze_speed_consumption(vessel_name)
-        st.pyplot(speed_charts)
-    elif decision_type == "vessel_score":
-        scores, analysis = analyze_vessel_score(vessel_name)
-        st.markdown(analysis)
-    elif decision_type == "crew_score":
-        scores, analysis = analyze_crew_score(vessel_name)
-        st.markdown(analysis)
-    elif decision_type == "position_tracking":
+    elif response["type"] in ["vessel_score", "crew_score"]:
+        st.markdown(response["content"])
+        st.markdown(response["response_data"]["analysis"])
+        cols = st.columns(3)
+        for i, (metric, value) in enumerate(response["response_data"]["scores"].items()):
+            with cols[i % 3]:
+                st.metric(metric.replace('_', ' ').title(), f"{value:.1f}%")
+    
+    elif response["type"] == "position":
+        st.markdown(response["content"])
+        st.markdown(response["response_data"]["analysis"])
+        vessel_name = response["content"].split("of ")[-1]
         position_agent.show_position(vessel_name)
-    elif decision_type == "combined_performance":
-        _, _, _, hull_chart = analyze_hull_performance(vessel_name)
-        _, speed_charts = analyze_speed_consumption(vessel_name)
-        st.pyplot(hull_chart)
-        st.pyplot(speed_charts)
-
-    st.markdown("I've updated the information above. Is there anything specific you'd like me to explain?")
 
 def main():
     # Set page config
     st.set_page_config(layout="wide", page_title="VesselIQ")
     
-    # Add custom CSS for better UI
+    # Add custom CSS
     st.markdown(
         """
         <style>
@@ -354,103 +374,100 @@ def main():
         "vessel position, or request a complete vessel synopsis!"
     )
     
-    # Initialize session state for chat history and responses if not exists
+    # Initialize session state
     if 'messages' not in st.session_state:
         st.session_state.messages = []
-    if 'current_response' not in st.session_state:
-        st.session_state.current_response = None
-    if 'last_query' not in st.session_state:
-        st.session_state.last_query = None
     
-    # Display chat history and saved responses
+    # Display chat history
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
-            
-            # If this message has an associated response, display it
             if "response_data" in message:
-                response_data = message["response_data"]
-                
-                # Display charts if they exist
-                if "charts" in response_data:
-                    for chart in response_data["charts"]:
-                        st.pyplot(chart)
-                
-                # Display analysis if it exists
-                if "analysis" in response_data:
-                    st.markdown(response_data["analysis"])
-                
-                # Display metrics if they exist
-                if "metrics" in response_data:
-                    cols = st.columns(3)
-                    for i, (metric, value) in enumerate(response_data["metrics"].items()):
-                        with cols[i % 3]:
-                            st.metric(metric.replace('_', ' ').title(), f"{value:.1f}%")
+                display_response(message)
+    
     
     # Handle user input
     if prompt := st.chat_input("What would you like to know about vessel performance?"):
-        try:
-            # Add user message to chat history
-            st.session_state.messages.append({"role": "human", "content": prompt})
-            st.session_state.last_query = prompt
+        # Add user message
+        st.session_state.messages.append({"role": "human", "content": prompt})
+        with st.chat_message("human"):
+            st.markdown(prompt)
+        
+        # Process query and add response
+        response = handle_user_query(prompt)
+        
+        # Display assistant response
+        with st.chat_message("assistant"):
+            st.markdown(response["content"])
+            if "response_data" in response:
+                display_response(response)
+        
+        # Store response in chat history
+        st.session_state.messages.append({
+            "role": "assistant",
+            "content": response["content"],
+            "type": response.get("type"),
+            "response_data": response.get("response_data")
+        })
+        
+        # Rerun the app to update the display
+        st.rerun()
+
+def initialize_page():
+    """Initialize the page with required styles and configurations."""
+    # Set page config
+    st.set_page_config(
+        page_title="VesselIQ",
+        page_icon="🚢",
+        layout="wide",
+        initial_sidebar_state="collapsed"
+    )
+    
+    # Add custom CSS
+    st.markdown(
+        """
+        <style>
+            .block-container { max-width: 1200px; padding-top: 2rem; }
+            .stTitle { font-size: 2rem; font-weight: bold; margin-bottom: 1rem; }
+            .stMarkdown { font-size: 1.1rem; }
+            .stChatFloatingInputContainer {
+                max-width: 80% !important;
+                margin-left: auto !important;
+                margin-right: auto !important;
+            }
+            .stChatMessage {
+                max-width: 100% !important;
+                padding: 1rem !important;
+            }
+            .status-poor { color: #dc3545; font-weight: 500; }
+            .status-average { color: #ffc107; font-weight: 500; }
+            .status-good { color: #28a745; font-weight: 500; }
             
-            # Display user message
-            with st.chat_message("human"):
-                st.markdown(prompt)
+            /* Additional styling for better visual hierarchy */
+            h1 { margin-bottom: 2rem; }
+            .stExpander { margin-bottom: 1rem; }
+            .stMetric { background-color: #f8f9fa; padding: 1rem; border-radius: 0.5rem; }
             
-            # Process user input and store response
-            with st.chat_message("assistant"):
-                response_data = {}
-                
-                if any(word in prompt.lower() for word in ["more", "details", "charts", "yes", "show me"]):
-                    # Handle follow-up questions
-                    handle_follow_up(prompt)
-                else:
-                    # Process new queries
-                    decision_data = get_llm_decision(prompt)
-                    vessel_name = decision_data.get("vessel_name")
-                    
-                    if not vessel_name:
-                        st.markdown("I couldn't identify a vessel name in your query. Could you please specify the vessel name?")
-                    else:
-                        # Process based on decision type
-                        if decision_data["decision"] == "hull_performance":
-                            analysis, power_loss, condition, chart = analyze_hull_performance(vessel_name)
-                            response_data = {
-                                "analysis": analysis,
-                                "charts": [chart] if chart else [],
-                                "metrics": {"power_loss": power_loss}
-                            }
-                            st.markdown(analysis)
-                            if chart:
-                                st.pyplot(chart)
-                        
-                        # Add similar blocks for other decision types...
-                        # (speed_consumption, vessel_score, crew_score, etc.)
-                
-                # Store the response in session state
-                if response_data:
-                    st.session_state.messages[-1]["response_data"] = response_data
-                    st.session_state.current_response = response_data
+            /* Improve chart visibility */
+            .stPlot { background-color: white; padding: 1rem; border-radius: 0.5rem; }
             
-        except Exception as e:
-            error_message = (
-                "I encountered an error processing your request. "
-                "Please try again with a different query."
-            )
-            
-            # Add error message to chat history
-            st.session_state.messages.append({
-                "role": "assistant",
-                "content": error_message
-            })
-            
-            # Display error in chat
-            with st.chat_message("assistant"):
-                st.markdown(error_message)
-            
-            # Log detailed error
-            st.error(f"Error details: {str(e)}")
+            /* Better spacing for expandable sections */
+            .streamlit-expanderHeader {
+                background-color: #f8f9fa;
+                border-radius: 0.5rem;
+                margin-bottom: 0.5rem;
+            }
+        </style>
+        """,
+        unsafe_allow_html=True
+    )
 
 if __name__ == "__main__":
-    main()
+    try:
+        initialize_page()
+        main()
+    except Exception as e:
+        st.error(f"An unexpected error occurred: {str(e)}")
+        if "messages" in st.session_state:
+            # Clear messages if there's an error to prevent error loop
+            st.session_state.messages = []
