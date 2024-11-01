@@ -13,7 +13,6 @@ from agents.crew_score_agent import analyze_crew_score
 from agents.hull_performance_agent import analyze_hull_performance
 from agents.speed_consumption_agent import analyze_speed_consumption
 from utils.database_utils import fetch_data_from_db
-from agents.position_tracking_agent import PositionTrackingAgent
 
 # LLM Prompts
 DECISION_PROMPT = """
@@ -228,6 +227,16 @@ def show_vessel_synopsis(vessel_name: str):
         hull_analysis, power_loss, hull_condition, hull_chart = analyze_hull_performance(vessel_name)
         speed_analysis, speed_charts = analyze_speed_consumption(vessel_name)
         
+        # Fetch CII Rating
+        cii_query = f"""
+        select cr."cii_rating"
+        from "CII ratings" cr
+        join "vessel_particulars" vp on cr."vessel_imo" = vp."vessel_imo"::bigint
+        where vp."vessel_name" = '{vessel_name.upper()}';
+        """
+        cii_data = fetch_data_from_db(cii_query)
+        cii_rating = cii_data.iloc[0]['cii_rating'] if not cii_data.empty else "N/A"
+        
         # Create header
         st.header(f"Vessel Synopsis - {vessel_name.upper()}")
         
@@ -242,16 +251,6 @@ def show_vessel_synopsis(vessel_name: str):
         
         # Display vessel information
         with st.expander("Vessel Information", expanded=False):
-            # Get CII Rating
-            cii_query = f"""
-            select cr."cii_rating"
-            from "CII ratings" cr
-            join "vessel_particulars" vp on cr."vessel_imo" = vp."vessel_imo"::bigint
-            where vp."vessel_name" = '{vessel_name.upper()}';
-            """
-            cii_data = fetch_data_from_db(cii_query)
-            cii_rating = cii_data.iloc[0]['cii_rating'] if not cii_data.empty else "N/A"
-            
             st.markdown(
                 f"""
                 | Parameter | Value |
@@ -262,10 +261,9 @@ def show_vessel_synopsis(vessel_name: str):
                 """
             )
         
-        # Display position using PositionTrackingAgent
+        # Display position
         with st.expander("Last Reported Position", expanded=False):
-            position_agent = PositionTrackingAgent()
-            position_agent.show_position(vessel_name)
+            show_vessel_position(vessel_name)
         
         # Display hull performance
         with st.expander("Hull Performance", expanded=False):
@@ -292,7 +290,7 @@ def show_vessel_synopsis(vessel_name: str):
     except Exception as e:
         st.error(f"Error generating vessel synopsis: {str(e)}")
         st.error("Please check the vessel name and try again.")
-       
+
 # Add this function to your streamlit_app.py file, after the DECISION_PROMPT definition and before handle_user_query
 
 def get_llm_decision(query: str) -> Dict[str, str]:
@@ -456,8 +454,7 @@ def main():
     
     # Initialize OpenAI API
     openai.api_key = get_api_key()
-    position_agent = PositionTrackingAgent()
-   
+    
     # Add CSS styles
     st.markdown("""
         <style>
