@@ -209,6 +209,72 @@ def show_vessel_synopsis(vessel_name: str):
         st.error(f"Error generating vessel synopsis: {str(e)}")
         st.error("Please check the vessel name and try again.")
 
+# Add this function to your streamlit_app.py file, after the DECISION_PROMPT definition and before handle_user_query
+
+def get_llm_decision(query: str) -> Dict[str, str]:
+    """
+    Use OpenAI API to analyze the query and determine the type of information needed.
+    
+    Args:
+        query (str): User's query text
+        
+    Returns:
+        Dict[str, str]: Decision data including vessel name and analysis type
+    """
+    messages = [
+        {"role": "system", "content": DECISION_PROMPT},
+        {"role": "user", "content": query}
+    ]
+    
+    try:
+        response = openai.ChatCompletion.create(
+            model="gpt-3.5-turbo",
+            messages=messages,
+            max_tokens=200,
+            temperature=0.3
+        )
+        
+        decision_text = response.choices[0].message['content'].strip()
+        
+        try:
+            decision_data = json.loads(decision_text)
+        except json.JSONDecodeError:
+            st.error("Error parsing LLM response. Using fallback logic.")
+            decision_data = {}
+        
+        # Fallback if vessel name extraction fails
+        if not decision_data.get('vessel_name'):
+            # Try to extract vessel name after 'of'
+            match = re.search(r'of\s+([^,.]+)', query, re.IGNORECASE)
+            if match:
+                decision_data['vessel_name'] = match.group(1).strip()
+            else:
+                # Try to extract any capitalized words as vessel name
+                capitalized_words = re.findall(r'[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*', query)
+                if capitalized_words:
+                    decision_data['vessel_name'] = capitalized_words[0]
+                else:
+                    # Last resort: use the whole query
+                    decision_data['vessel_name'] = query
+        
+        # Ensure all required fields are present
+        decision_data.setdefault('decision', 'general_info')
+        decision_data.setdefault('response_type', 'concise')
+        decision_data.setdefault('explanation', 'Fallback decision')
+        
+        return decision_data
+        
+    except Exception as e:
+        st.error(f"Error in LLM decision: {str(e)}")
+        # Fallback to basic extraction
+        vessel_name = re.search(r'of\s+([^,.]+)', query, re.IGNORECASE)
+        return {
+            "vessel_name": vessel_name.group(1) if vessel_name else query,
+            "decision": "general_info",
+            "response_type": "concise",
+            "explanation": "Error occurred, defaulting to general info"
+        }
+
 def handle_user_query(query: str) -> str:
     """Process user query and return appropriate response."""
     decision_data = get_llm_decision(query)
