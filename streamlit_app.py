@@ -141,10 +141,8 @@ def create_vessel_map(latitude: float, longitude: float) -> folium.Map:
 def show_vessel_synopsis(vessel_name: str):
     """Display comprehensive vessel synopsis."""
     try:
-        # Get hull performance data
+        # Get all performance data
         hull_analysis, power_loss, hull_condition, hull_chart = analyze_hull_performance(vessel_name)
-        
-        # Get speed consumption data
         speed_analysis, speed_charts = analyze_speed_consumption(vessel_name)
         
         # Fetch CII Rating
@@ -201,13 +199,16 @@ def show_vessel_synopsis(vessel_name: str):
             else:
                 st.warning("No speed consumption data available")
         
-        # Call the imported display functions
-        display_vessel_score(vessel_name)  # Using the imported function
-        display_crew_score(vessel_name)    # Using the imported function
+        # Display vessel score
+        display_vessel_score(vessel_name)
+        
+        # Display crew score
+        display_crew_score(vessel_name)
         
     except Exception as e:
         st.error(f"Error generating vessel synopsis: {str(e)}")
         st.error("Please check the vessel name and try again.")
+
 # Add this function to your streamlit_app.py file, after the DECISION_PROMPT definition and before handle_user_query
 
 def get_llm_decision(query: str) -> Dict[str, str]:
