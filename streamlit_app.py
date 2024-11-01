@@ -138,6 +138,88 @@ def create_vessel_map(latitude: float, longitude: float) -> folium.Map:
     
     return m
 
+def display_vessel_score(vessel_name: str):
+    """
+    Display vessel score and its components using Streamlit components.
+    Args:
+        vessel_name (str): Name of the vessel
+    """
+    try:
+        # Get scores and analysis from the agent
+        scores, analysis = analyze_vessel_score(vessel_name)
+        
+        if not scores:
+            st.warning("No vessel score data available")
+            return
+            
+        # Create score display section
+        with st.expander("Vessel Performance Score", expanded=False):
+            # Display overall score prominently
+            st.metric("Overall Vessel Score", f"{scores['vessel_score']:.1f}%")
+            
+            # Display component scores in columns
+            col1, col2, col3 = st.columns(3)
+            
+            with col1:
+                st.metric("Cost Score", f"{scores['cost_score']:.1f}%")
+                st.metric("Environment Score", f"{scores['environment_score']:.1f}%")
+            
+            with col2:
+                st.metric("Operation Score", f"{scores['operation_score']:.1f}%")
+                st.metric("Reliability Score", f"{scores['reliability_score']:.1f}%")
+            
+            with col3:
+                st.metric("Digitalization Score", f"{scores['digitalization_score']:.1f}%")
+            
+            # Display analysis
+            st.markdown("### Analysis")
+            st.write(analysis)
+            
+    except Exception as e:
+        st.error(f"Error displaying vessel score: {str(e)}")
+
+def display_crew_score(vessel_name: str):
+    """
+    Display crew performance score and analysis using Streamlit components.
+    Args:
+        vessel_name (str): Name of the vessel
+    """
+    try:
+        # Get scores and analysis from the agent
+        scores, analysis = analyze_crew_score(vessel_name)
+        
+        if not scores:
+            st.warning("No crew performance data available")
+            return
+            
+        # Create crew score display section
+        with st.expander("Crew Performance Score", expanded=False):
+            # Display overall crew score
+            if 'overall_score' in scores:
+                st.metric("Overall Crew Score", f"{scores['overall_score']:.1f}%")
+            
+            # Display component scores if available
+            if len(scores) > 1:  # If we have component scores
+                cols = st.columns(3)
+                
+                # Distribute scores across columns
+                score_items = list(scores.items())
+                for i, col in enumerate(cols):
+                    with col:
+                        for key, value in score_items[i::3]:  # Display every third item
+                            if key != 'overall_score':  # Skip overall score as it's already displayed
+                                st.metric(
+                                    key.replace('_', ' ').title(),
+                                    f"{value:.1f}%"
+                                )
+            
+            # Display analysis
+            st.markdown("### Analysis")
+            st.write(analysis)
+            
+    except Exception as e:
+        st.error(f"Error displaying crew score: {str(e)}")
+
 def show_vessel_synopsis(vessel_name: str):
     """Display comprehensive vessel synopsis."""
     try:
