@@ -5,6 +5,7 @@ import pandas as pd
 import json
 import re
 from typing import Dict, Tuple, Optional
+import time
 
 # Set page config
 st.set_page_config(
@@ -23,10 +24,33 @@ from agents.position_tracking_agent import PositionTrackingAgent
 from utils.database_utils import fetch_data_from_db
 from utils.nlp_utils import clean_vessel_name
 
-# Initialize agents
+# Initialize position tracking agent
 position_agent = PositionTrackingAgent()
 
-# CSS for styling
+# Constants
+DECISION_PROMPT = """
+You are an AI assistant specialized in vessel performance analysis. Based on the user's query:
+1. Extract the vessel name (may appear after 'of', 'for', 'about').
+2. Determine the required performance information type.
+
+Decision rules:
+- "vessel synopsis/summary/overview" → "vessel_synopsis"
+- "vessel performance" or "hull and speed performance" → "combined_performance"
+- "hull performance" → "hull_performance"
+- "speed consumption" → "speed_consumption"
+- "vessel score/rating/KPIs" → "vessel_score"
+- "crew performance/score/rating" → "crew_score"
+- "position/location/where is" → "position_tracking"
+
+Output format:
+{
+    "vessel_name": "<cleaned_vessel_name>",
+    "decision": "<decision_type>",
+    "response_type": "concise"
+}
+"""
+
+# CSS Styling
 st.markdown(
     """
     <style>
@@ -59,29 +83,6 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# Constants
-DECISION_PROMPT = """
-You are an AI assistant specialized in vessel performance analysis. Based on the user's query:
-1. Extract the vessel name (may appear after 'of', 'for', 'about').
-2. Determine the required performance information type.
-
-Decision rules:
-- "vessel synopsis/summary/overview" → "vessel_synopsis"
-- "vessel performance" or "hull and speed performance" → "combined_performance"
-- "hull performance" → "hull_performance"
-- "speed consumption" → "speed_consumption"
-- "vessel score/rating/KPIs" → "vessel_score"
-- "crew performance/score/rating" → "crew_score"
-- "position/location/where is" → "position_tracking"
-
-Output format:
-{
-    "vessel_name": "<cleaned_vessel_name>",
-    "decision": "<decision_type>",
-    "response_type": "concise"
-}
-"""
-
 class SessionState:
     """Handle session state initialization and management."""
     @staticmethod
@@ -89,38 +90,39 @@ class SessionState:
         if 'initialized' not in st.session_state:
             st.session_state.initialized = True
             st.session_state.messages = []
-            st.session_state.current_display = {}
-            st.session_state.display_history = []
-            st.session_state.data_store = {
-                'synopsis': {},
-                'analysis': {},
-                'scores': {},
-                'position': {},
-                'charts': {}
-            }
+            st.session_state.current_vessel = None
+            st.session_state.current_analysis = None
+            st.session_state.data_cache = {}
+            st.session_state.processing = False
+            st.session_state.error = None
     
     @staticmethod
-    def store_data(data_type: str, key: str, data: dict):
-        """Store data in session state."""
-        if data_type in st.session_state.data_store:
-            st.session_state.data_store[data_type][key] = data
+    def cache_data(key: str, data: dict):
+        """Store data in cache with timestamp."""
+        st.session_state.data_cache[key] = {
+            'data': data,
+            'timestamp': time.time()
+        }
     
     @staticmethod
-    def get_data(data_type: str, key: str) -> Optional[dict]:
-        """Retrieve data from session state."""
-        return st.session_state.data_store.get(data_type, {}).get(key)
+    def get_cached_data(key: str, max_age: int = 300) -> Optional[dict]:
+        """Retrieve cached data if not expired."""
+        if key in st.session_state.data_cache:
+            cache_entry = st.session_state.data_cache[key]
+            if time.time() - cache_entry['timestamp'] < max_age:
+                return cache_entry['data']
+        return None
     
     @staticmethod
-    def clear_old_data():
-        """Clear old data if storage gets too large."""
-        max_messages = 50
-        if len(st.session_state.messages) > max_messages:
-            st.session_state.messages = st.session_state.messages[-max_messages:]
-            for data_type in st.session_state.data_store:
-                if len(st.session_state.data_store[data_type]) > max_messages:
-                    keys = list(st.session_state.data_store[data_type].keys())
-                    for key in keys[:-max_messages]:
-                        del st.session_state.data_store[data_type][key]
+    def clear_old_cache(max_entries: int = 50):
+        """Clear old cache entries if cache gets too large."""
+        if len(st.session_state.data_cache) > max_entries:
+            sorted_cache = sorted(
+                st.session_state.data_cache.items(),
+                key=lambda x: x[1]['timestamp']
+            )
+            for key, _ in sorted_cache[:-max_entries]:
+                del st.session_state.data_cache[key]
 
 def get_api_key() -> str:
     """Get OpenAI API key from secrets or environment variables."""
@@ -179,7 +181,7 @@ def get_llm_decision(query: str) -> Dict[str, str]:
 def show_vessel_synopsis(vessel_name: str) -> dict:
     """Generate comprehensive vessel synopsis data with caching."""
     cache_key = f"synopsis_{vessel_name}"
-    cached_data = SessionState.get_data('synopsis', cache_key)
+    cached_data = SessionState.get_cached_data(cache_key)
     if cached_data:
         return cached_data
     
@@ -225,12 +227,126 @@ def show_vessel_synopsis(vessel_name: str) -> dict:
             response_data["analyses"]["crew"] = crew_analysis
         
         # Store in cache
-        SessionState.store_data('synopsis', cache_key, response_data)
+        SessionState.cache_data(cache_key, response_data)
         return response_data
         
     except Exception as e:
         st.error(f"Error generating vessel synopsis: {str(e)}")
         return None
+
+def process_specific_analysis(decision_type: str, vessel_name: str) -> dict:
+    """Process specific analysis types and return response data with caching."""
+    cache_key = f"{decision_type}_{vessel_name}"
+    cached_data = SessionState.get_cached_data(cache_key)
+    if cached_data:
+        return cached_data
+    
+    try:
+        if decision_type == "hull_performance":
+            analysis, power_loss, condition, chart = analyze_hull_performance(vessel_name)
+            response = {
+                "content": f"Hull Performance Analysis for {vessel_name}",
+                "response_data": {
+                    "analysis": analysis,
+                    "charts": [("hull", chart)] if chart else [],
+                    "scores": {"power_loss": power_loss, "condition": condition}
+                },
+                "type": "hull_performance"
+            }
+            
+        elif decision_type == "speed_consumption":
+            analysis, charts = analyze_speed_consumption(vessel_name)
+            response = {
+                "content": f"Speed Consumption Analysis for {vessel_name}",
+                "response_data": {
+                    "analysis": analysis,
+                    "charts": [("speed", charts)] if charts else []
+                },
+                "type": "speed_consumption"
+            }
+            
+        elif decision_type == "vessel_score":
+            scores, analysis = analyze_vessel_score(vessel_name)
+            response = {
+                "content": f"Vessel Score Analysis for {vessel_name}",
+                "response_data": {
+                    "analysis": analysis,
+                    "scores": scores
+                },
+                "type": "vessel_score"
+            }
+            
+        elif decision_type == "crew_score":
+            scores, analysis = analyze_crew_score(vessel_name)
+            response = {
+                "content": f"Crew Performance Analysis for {vessel_name}",
+                "response_data": {
+                    "analysis": analysis,
+                    "scores": scores
+                },
+                "type": "crew_score"
+            }
+            
+        elif decision_type == "position_tracking":
+            analysis = position_agent.get_position_analysis(vessel_name)
+            response = {
+                "content": f"Current Position of {vessel_name}",
+                "response_data": {
+                    "analysis": analysis,
+                    "position_data": True
+                },
+                "type": "position"
+            }
+        
+        # Store in cache
+        SessionState.cache_data(cache_key, response)
+        return response
+            
+    except Exception as e:
+        return {
+            "content": f"Error processing {decision_type}: {str(e)}",
+            "type": "error"
+        }
+
+def display_response(response: dict):
+    """Display the appropriate response based on type with persistent state."""
+    if response["type"] == "synopsis":
+        display_synopsis(response["response_data"])
+        
+    elif response["type"] in ["hull_performance", "speed_consumption"]:
+        container = st.container()
+        with container:
+            st.markdown(response["content"])
+            for chart_name, chart in response["response_data"].get("charts", []):
+                st.pyplot(chart)
+            st.markdown(response["response_data"]["analysis"])
+            
+            if "scores" in response["response_data"]:
+                cols = st.columns(len(response["response_data"]["scores"]))
+                for i, (metric, value) in enumerate(response["response_data"]["scores"].items()):
+                    with cols[i]:
+                        if isinstance(value, float):
+                            st.metric(metric.replace('_', ' ').title(), f"{value:.1f}%")
+                        else:
+                            st.metric(metric.replace('_', ' ').title(), value)
+    
+    elif response["type"] in ["vessel_score", "crew_score"]:
+        container = st.container()
+        with container:
+            st.markdown(response["content"])
+            st.markdown(response["response_data"]["analysis"])
+            cols = st.columns(3)
+            for i, (metric, value) in enumerate(response["response_data"]["scores"].items()):
+                with cols[i % 3]:
+                    st.metric(metric.replace('_', ' ').title(), f"{value:.1f}%")
+    
+    elif response["type"] == "position":
+        container = st.container()
+        with container:
+            st.markdown(response["content"])
+            st.markdown(response["response_data"]["analysis"])
+            vessel_name = response["content"].split("of ")[-1]
+            position_agent.show_position(vessel_name)
 
 def display_synopsis(response_data: dict):
     """Display stored synopsis data with persistent state."""
@@ -314,127 +430,6 @@ def display_synopsis(response_data: dict):
         else:
             st.warning("No crew score data available")
 
-def process_specific_analysis(decision_type: str, vessel_name: str) -> dict:
-    """Process specific analysis types and return response data with caching."""
-    cache_key = f"{decision_type}_{vessel_name}"
-    cached_data = SessionState.get_data('analysis', cache_key)
-    if cached_data:
-        return cached_data
-    
-    try:
-        if decision_type == "hull_performance":
-            analysis, power_loss, condition, chart = analyze_hull_performance(vessel_name)
-            response = {
-                "content": f"Hull Performance Analysis for {vessel_name}",
-                "response_data": {
-                    "analysis": analysis,
-                    "charts": [("hull", chart)] if chart else [],
-                    "scores": {"power_loss": power_loss, "condition": condition}
-                },
-                "type": "hull_performance"
-            }
-            
-        elif decision_type == "speed_consumption":
-            analysis, charts = analyze_speed_consumption(vessel_name)
-            response = {
-                "content": f"Speed Consumption Analysis for {vessel_name}",
-                "response_data": {
-                    "analysis": analysis,
-                    "charts": [("speed", charts)] if charts else []
-                },
-                "type": "speed_consumption"
-            }
-            
-        elif decision_type == "vessel_score":
-            scores, analysis = analyze_vessel_score(vessel_name)
-            response = {
-                "content": f"Vessel Score Analysis for {vessel_name}",
-                "response_data": {
-                    "analysis": analysis,
-                    "scores": scores
-                },
-                "type": "vessel_score"
-            }
-            
-        elif decision_type == "crew_score":
-            scores, analysis = analyze_crew_score(vessel_name)
-            response = {
-                "content": f"Crew Performance Analysis for {vessel_name}",
-                "response_data": {
-                    "analysis": analysis,
-                    "scores": scores
-                },
-                "type": "crew_score"
-            }
-            
-        elif decision_type == "position_tracking":
-            analysis = position_agent.get_position_analysis(vessel_name)
-            response = {
-                "content": f"Current Position of {vessel_name}",
-                "response_data": {
-                    "analysis": analysis,
-                    "position_data": True
-                },
-                "type": "position"
-            }
-        
-        # Store in cache
-        SessionState.store_data('analysis', cache_key, response)
-        return response
-            
-    except Exception as e:
-        return {
-            "content": f"Error processing {decision_type}: {str(e)}",
-            "type": "error"
-        }
-
-def display_response(response: dict):
-    """Display the appropriate response based on type with persistent state."""
-    if 'current_display' not in st.session_state:
-        st.session_state.current_display = {}
-    
-    # Store current response in session state
-    st.session_state.current_display = response
-    
-    if response["type"] == "synopsis":
-        display_synopsis(response["response_data"])
-        SessionState.store_data('synopsis', response["content"], response["response_data"])
-    
-    elif response["type"] in ["hull_performance", "speed_consumption"]:
-        container = st.container()
-        with container:
-            st.markdown(response["content"])
-            for chart_name, chart in response["response_data"].get("charts", []):
-                st.pyplot(chart)
-            st.markdown(response["response_data"]["analysis"])
-            
-            if "scores" in response["response_data"]:
-                cols = st.columns(len(response["response_data"]["scores"]))
-                for i, (metric, value) in enumerate(response["response_data"]["scores"].items()):
-                    with cols[i]:
-                        if isinstance(value, float):
-                            st.metric(metric.replace('_', ' ').title(), f"{value:.1f}%")
-                        else:
-                            st.metric(metric.replace('_', ' ').title(), value)
-    
-    elif response["type"] in ["vessel_score", "crew_score"]:
-        container = st.container()
-        with container:
-            st.markdown(response["content"])
-            st.markdown(response["response_data"]["analysis"])
-            cols = st.columns(3)
-            for i, (metric, value) in enumerate(response["response_data"]["scores"].items()):
-                with cols[i % 3]:
-                    st.metric(metric.replace('_', ' ').title(), f"{value:.1f}%")
-    
-    elif response["type"] == "position":
-        container = st.container()
-        with container:
-            st.markdown(response["content"])
-            st.markdown(response["response_data"]["analysis"])
-            vessel_name = response["content"].split("of ")[-1]
-            position_agent.show_position(vessel_name)
-
 def handle_user_query(query: str) -> dict:
     """Process user query and return appropriate response with caching."""
     decision_data = get_llm_decision(query)
@@ -491,27 +486,32 @@ def main():
         "vessel position, or request a complete vessel synopsis!"
     )
     
+    # Create a container for chat history
+    chat_container = st.container()
+    
     # Display chat history and stored visualizations
-    for message in st.session_state.messages:
-        with st.chat_message(message["role"]):
-            st.markdown(message["content"])
-            if "response_data" in message and message.get("type"):
-                display_response({
-                    "content": message["content"],
-                    "response_data": message["response_data"],
-                    "type": message["type"]
-                })
+    with chat_container:
+        for message in st.session_state.messages:
+            with st.chat_message(message["role"]):
+                st.markdown(message["content"])
+                if "response_data" in message and message.get("type"):
+                    display_response({
+                        "content": message["content"],
+                        "response_data": message["response_data"],
+                        "type": message["type"]
+                    })
     
     # Handle user input
-    if prompt := st.chat_input("What would you like to know about vessel performance?"):
+    if prompt := st.chat_input("What would you like to know about vessel performance?", key="chat_input"):
         try:
             # Add user message
-            st.session_state.messages.append({"role": "human", "content": prompt})
             with st.chat_message("human"):
                 st.markdown(prompt)
+            st.session_state.messages.append({"role": "human", "content": prompt})
             
-            # Process query and add response
-            response = handle_user_query(prompt)
+            # Process query
+            with st.spinner("Processing your request..."):
+                response = handle_user_query(prompt)
             
             # Display assistant response
             with st.chat_message("assistant"):
@@ -528,8 +528,11 @@ def main():
             }
             st.session_state.messages.append(message_data)
             
-            # Clean old data if necessary
-            SessionState.clear_old_data()
+            # Clean old cache if necessary
+            SessionState.clear_old_cache()
+            
+            # Force rerun to update display
+            st.experimental_rerun()
             
         except Exception as e:
             error_message = f"An error occurred while processing your request: {str(e)}"
