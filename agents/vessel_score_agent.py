@@ -1,5 +1,6 @@
 from typing import Dict, Tuple
 import pandas as pd
+import streamlit as st
 from utils.database_utils import fetch_data_from_db
 
 def analyze_vessel_score(vessel_name: str) -> Tuple[Dict[str, float], str]:
@@ -103,3 +104,73 @@ def generate_vessel_score_analysis(vessel_name: str, scores: Dict[str, float]) -
     ])
     
     return full_analysis
+
+def display_vessel_score(vessel_name: str):
+    """
+    Display vessel score information in an expander.
+    
+    Args:
+        vessel_name (str): Name of the vessel
+    """
+    with st.expander("Vessel Score Details", expanded=False):
+        scores, analysis = analyze_vessel_score(vessel_name)
+        
+        if scores:
+            col1, col2 = st.columns([1, 2])
+            
+            with col1:
+                st.metric("Overall Vessel Score", f"{scores['vessel_score']:.1f}%")
+            
+            with col2:
+                st.markdown(
+                    f"""
+                    <table>
+                        <tr>
+                            <th>Component</th>
+                            <th>Score</th>
+                        </tr>
+                        <tr>
+                            <td>Cost</td>
+                            <td><span class='status-{"good" if scores['cost_score'] >= 75 else "average" if scores['cost_score'] >= 60 else "poor"}'>{scores['cost_score']:.1f}%</span></td>
+                        </tr>
+                        <tr>
+                            <td>Digitalization</td>
+                            <td><span class='status-{"good" if scores['digitalization_score'] >= 75 else "average" if scores['digitalization_score'] >= 60 else "poor"}'>{scores['digitalization_score']:.1f}%</span></td>
+                        </tr>
+                        <tr>
+                            <td>Environment</td>
+                            <td><span class='status-{"good" if scores['environment_score'] >= 75 else "average" if scores['environment_score'] >= 60 else "poor"}'>{scores['environment_score']:.1f}%</span></td>
+                        </tr>
+                        <tr>
+                            <td>Operation</td>
+                            <td><span class='status-{"good" if scores['operation_score'] >= 75 else "average" if scores['operation_score'] >= 60 else "poor"}'>{scores['operation_score']:.1f}%</span></td>
+                        </tr>
+                        <tr>
+                            <td>Reliability</td>
+                            <td><span class='status-{"good" if scores['reliability_score'] >= 75 else "average" if scores['reliability_score'] >= 60 else "poor"}'>{scores['reliability_score']:.1f}%</span></td>
+                        </tr>
+                    </table>
+                    """,
+                    unsafe_allow_html=True
+                )
+            
+            st.markdown(analysis)
+        else:
+            st.warning("No vessel score data available")
+
+def get_score_status(score: float) -> str:
+    """
+    Get the status class for a score.
+    
+    Args:
+        score (float): The score to evaluate
+        
+    Returns:
+        str: Status class (good, average, or poor)
+    """
+    if score >= 75:
+        return "good"
+    elif score >= 60:
+        return "average"
+    else:
+        return "poor"
