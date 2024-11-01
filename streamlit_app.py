@@ -13,12 +13,13 @@ from agents.crew_score_agent import analyze_crew_score
 from agents.hull_performance_agent import analyze_hull_performance
 from agents.speed_consumption_agent import analyze_speed_consumption
 from utils.database_utils import fetch_data_from_db
+from agents.engine_troubleshooting_agent import analyze_engine_troubleshooting
 
 # LLM Prompts
 DECISION_PROMPT = """
 You are an AI assistant specialized in vessel performance analysis. The user will ask a query related to vessel performance. Based on the user's query, do two things:
 1. Extract only the vessel name from the query. The vessel name may appear after the word 'of' (e.g., 'hull performance of Trammo Marycam' => 'Trammo Marycam').
-2. Determine what type of performance information is needed to answer the user's query. The options are:
+2. Determine what type of information is needed to answer the user's query. The options are:
    - Hull performance
    - Speed consumption
    - Combined performance (both hull and speed)
@@ -26,6 +27,8 @@ You are an AI assistant specialized in vessel performance analysis. The user wil
    - General vessel information
    - Vessel score
    - Crew performance
+   - Engine troubleshooting
+
 
 Choose the decision based on these rules:
 - If the user asks for "vessel synopsis", "vessel summary", or "vessel overview", return "vessel_synopsis"
@@ -34,6 +37,9 @@ Choose the decision based on these rules:
 - If the user asks only about "speed consumption," return "speed_consumption"
 - If the user asks about "vessel score" or "performance score," return "vessel_score"
 - If the user asks about "crew performance" or "crew score," return "crew_score"
+- If the user asks about "engine problems", "engine maintenance", "engine troubleshooting", or specific engine components, return "engine_troubleshooting"
+- If the query contains words like "engine failure", "engine repair", "engine maintenance", return "engine_troubleshooting"
+
 
 Output your response as a JSON object with the following structure:
 {
@@ -601,7 +607,22 @@ def handle_user_query(query: str) -> str:
     st.session_state.response_type = response_type
     
     # Handle different types of requests
-    if decision_type == "vessel_synopsis":
+    if decision_type == "engine_troubleshooting":
+        answer, diagrams = analyze_engine_troubleshooting(vessel_name, query)
+        
+        # Display any technical diagrams if available
+        if diagrams:
+            st.write("**Relevant Technical Diagrams:**")
+            for idx, diagram in enumerate(diagrams):
+                st.write(f"\n### Diagram {idx + 1}: {diagram['image_name']}")
+                display_image_in_streamlit(
+                    diagram['image_data'],
+                    f"Technical Diagram {idx + 1}"
+                )
+        
+        return answer
+        
+    elif decision_type == "vessel_synopsis":
         show_vessel_synopsis(vessel_name)
         return f"Here's the complete synopsis for {vessel_name}. Let me know if you need any specific information explained."
     
@@ -658,7 +679,19 @@ def handle_follow_up(query: str):
     vessel_name = st.session_state.vessel_name
     decision_type = st.session_state.decision_type
     
-    if decision_type == "hull_performance":
+    if decision_type == "engine_troubleshooting":
+        answer, diagrams = analyze_engine_troubleshooting(vessel_name, query)
+        if diagrams:
+            st.write("**Additional Technical Diagrams:**")
+            for idx, diagram in enumerate(diagrams):
+                st.write(f"\n### Diagram {idx + 1}: {diagram['image_name']}")
+                display_image_in_streamlit(
+                    diagram['image_data'],
+                    f"Technical Diagram {idx + 1}"
+                )
+        return answer
+        
+    elif decision_type == "hull_performance":
         hull_analysis, _, _, hull_chart = analyze_hull_performance(vessel_name)
         st.pyplot(hull_chart)
         return hull_analysis
@@ -691,7 +724,7 @@ def main():
     """, unsafe_allow_html=True)
     
     st.title("VesselIQ - Smart Vessel Insights")
-    st.markdown("Ask me about vessel performance, speed consumption, or request a complete vessel synopsis!")
+    st.markdown("Ask me about vessel performance, engine troubleshooting, speed consumption, or request a complete vessel synopsis!")
     
     # Initialize session state
     if 'messages' not in st.session_state:
