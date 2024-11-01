@@ -37,7 +37,7 @@ Choose the decision based on these rules:
 - If the user asks only about "speed consumption," return "speed_consumption"
 - If the user asks about "vessel score" or "performance score," return "vessel_score"
 - If the user asks about "crew performance" or "crew score," return "crew_score"
-- If the user asks about "engine problems", "engine maintenance", "engine troubleshooting", or specific engine components, return "engine_troubleshooting"
+- If the user asks about "engine problems", "engine maintenance", "overhaul", "dismantling", "assembly", "engine troubleshooting", or specific engine components, return "engine_troubleshooting"
 - If the query contains words like "engine failure", "engine repair", "engine maintenance", return "engine_troubleshooting"
 
 
