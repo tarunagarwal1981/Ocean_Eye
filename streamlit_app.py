@@ -13,6 +13,7 @@ from agents.crew_score_agent import analyze_crew_score
 from agents.hull_performance_agent import analyze_hull_performance
 from agents.speed_consumption_agent import analyze_speed_consumption
 from utils.database_utils import fetch_data_from_db
+from agents.position_tracking_agent import PositionTrackingAgent
 
 # LLM Prompts
 DECISION_PROMPT = """
@@ -261,9 +262,19 @@ def show_vessel_synopsis(vessel_name: str):
                 """
             )
         
-        # Display position
+        # Display position using the agent
         with st.expander("Last Reported Position", expanded=False):
-            show_vessel_position(vessel_name)
+            # Add CSS for map visibility
+            st.markdown("""
+                <style>
+                    .folium-map {
+                        width: 100% !important;
+                        min-height: 300px !important;
+                        z-index: 1 !important;
+                    }
+                </style>
+            """, unsafe_allow_html=True)
+            position_agent.show_position(vessel_name)
         
         # Display hull performance
         with st.expander("Hull Performance", expanded=False):
@@ -454,7 +465,8 @@ def main():
     
     # Initialize OpenAI API
     openai.api_key = get_api_key()
-    
+    position_agent = PositionTrackingAgent()
+   
     # Add CSS styles
     st.markdown("""
         <style>
