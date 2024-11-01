@@ -367,6 +367,24 @@ def display_response(response: dict):
             st.session_state.position_data = {}
         st.session_state.position_data[vessel_name] = response["response_data"]
 
+def handle_user_query(query: str) -> dict:
+    """Process the user's query and return the response."""
+    # Get decision from LLM
+    decision_data = get_llm_decision(query)
+    vessel_name = decision_data["vessel_name"]
+    decision_type = decision_data["decision"]
+    response_type = decision_data.get("response_type", "concise")
+    
+    # Handle different types of analysis based on decision
+    if decision_type == "vessel_synopsis":
+        response_data = show_vessel_synopsis(vessel_name)
+        return {"content": f"Complete Vessel Synopsis for {vessel_name}", "response_data": response_data, "type": "synopsis"}
+    else:
+        # Process specific analysis type
+        response = process_specific_analysis(decision_type, vessel_name)
+        return response
+
+
 def main():
     """Main application function."""
     # Application header
