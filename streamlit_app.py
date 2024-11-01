@@ -1,20 +1,18 @@
-# app.py
-
 import streamlit as st
-# Must be the first Streamlit command
-st.set_page_config(
-    page_title="VesselIQ",
-    page_icon="🚢",
-    layout="wide",
-    initial_sidebar_state="collapsed"
-)
-
 import openai
 import os
 import pandas as pd
 import json
 import re
 from typing import Dict, Tuple, Optional
+
+# Set page config
+st.set_page_config(
+    page_title="VesselIQ",
+    page_icon="🚢",
+    layout="wide",
+    initial_sidebar_state="collapsed"
+)
 
 # Import all agents
 from agents.hull_performance_agent import analyze_hull_performance
@@ -28,7 +26,7 @@ from utils.nlp_utils import clean_vessel_name
 # Initialize agents
 position_agent = PositionTrackingAgent()
 
-# Add custom CSS
+# CSS for styling
 st.markdown(
     """
     <style>
@@ -49,18 +47,8 @@ st.markdown(
         .status-good { color: #28a745; font-weight: 500; }
         h1 { margin-bottom: 2rem; }
         .stExpander { margin-bottom: 1rem; }
-        .stMetric { 
-            background-color: #f8f9fa; 
-            padding: 1rem; 
-            border-radius: 0.5rem;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .stPlot { 
-            background-color: white; 
-            padding: 1rem; 
-            border-radius: 0.5rem;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
+        .stMetric { background-color: #f8f9fa; padding: 1rem; border-radius: 0.5rem; }
+        .stPlot { background-color: white; padding: 1rem; border-radius: 0.5rem; }
         .streamlit-expanderHeader {
             background-color: #f8f9fa;
             border-radius: 0.5rem;
@@ -557,4 +545,3 @@ if __name__ == "__main__":
         main()
     except Exception as e:
         st.error(f"An unexpected error occurred: {str(e)}")
-        # Don't clear session state on error to maintain persistence
