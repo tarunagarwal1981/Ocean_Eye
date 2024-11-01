@@ -1,69 +1,78 @@
-# agents/vessel_performance_agent.py
-
+from typing import Dict, Tuple
+import pandas as pd
 from utils.database_utils import fetch_data_from_db
-from typing import Tuple, Dict, Optional
 
 def analyze_vessel_score(vessel_name: str) -> Tuple[Dict[str, float], str]:
     """
-    Analyze vessel score and its components.
+    Analyze vessel score and component scores for a given vessel.
     
     Args:
         vessel_name (str): Name of the vessel
-    
+        
     Returns:
-        Tuple[Dict[str, float], str]: Dictionary of scores and analysis text
+        Tuple[Dict[str, float], str]: Dictionary containing scores and analysis text
     """
+    # Fetch Vessel Score and component scores
+    score_query = f"""
+    select
+        "Vessel Score",
+        "Cost",
+        "Digitalization",
+        "Environment",
+        "Operation",
+        "Reliability"
+    from
+        "Vessel Scorecard"
+    where
+        upper("Vessels") = '{vessel_name.upper()}';
+    """
+    
     try:
-        # Fetch Vessel Score and component scores
-        score_query = f"""
-        select
-          "Vessel Score",
-          "Cost",
-          "Digitalization",
-          "Environment",
-          "Operation",
-          "Reliability"
-        from
-          "Vessel Scorecard"
-        where
-          upper("Vessels") = '{vessel_name.upper()}';
-        """
         score_data = fetch_data_from_db(score_query)
         
-        if score_data.empty:
+        if not score_data.empty:
+            scores = {
+                'vessel_score': float(score_data.iloc[0]['Vessel Score']),
+                'cost_score': float(score_data.iloc[0]['Cost']),
+                'digitalization_score': float(score_data.iloc[0]['Digitalization']),
+                'environment_score': float(score_data.iloc[0]['Environment']),
+                'operation_score': float(score_data.iloc[0]['Operation']),
+                'reliability_score': float(score_data.iloc[0]['Reliability'])
+            }
+            
+            # Generate analysis text
+            analysis = generate_vessel_score_analysis(vessel_name, scores)
+            
+            return scores, analysis
+        else:
             return {}, "No vessel score data available"
             
-        scores = {
-            'vessel_score': float(score_data.iloc[0]['Vessel Score']),
-            'cost_score': float(score_data.iloc[0]['Cost']),
-            'digitalization_score': float(score_data.iloc[0]['Digitalization']),
-            'environment_score': float(score_data.iloc[0]['Environment']),
-            'operation_score': float(score_data.iloc[0]['Operation']),
-            'reliability_score': float(score_data.iloc[0]['Reliability'])
-        }
-        
-        # Generate analysis text
-        analysis = generate_vessel_score_analysis(scores)
-        
-        return scores, analysis
-        
     except Exception as e:
         return {}, f"Error analyzing vessel score: {str(e)}"
 
-def generate_vessel_score_analysis(scores: Dict[str, float]) -> str:
+def generate_vessel_score_analysis(vessel_name: str, scores: Dict[str, float]) -> str:
     """
-    Generate analysis text based on vessel scores.
+    Generate detailed analysis of vessel scores.
     
     Args:
-        scores (Dict[str, float]): Dictionary containing vessel scores
+        vessel_name (str): Name of the vessel
+        scores (Dict[str, float]): Dictionary containing various scores
         
     Returns:
-        str: Analysis text
+        str: Detailed analysis text
     """
-    vessel_score = scores['vessel_score']
+    analysis_points = []
     
-    # Find strongest and weakest areas
-    component_scores = {
+    # Overall score analysis
+    if scores['vessel_score'] >= 75:
+        analysis_points.append(f"{vessel_name} demonstrates excellent overall performance with a score of {scores['vessel_score']:.1f}%")
+    elif scores['vessel_score'] >= 60:
+        analysis_points.append(f"{vessel_name} shows adequate overall performance with a score of {scores['vessel_score']:.1f}%")
+    else:
+        analysis_points.append(f"{vessel_name} requires attention with a below-target score of {scores['vessel_score']:.1f}%")
+
+    # Identify strongest and weakest areas
+    score_components = {
         'Cost': scores['cost_score'],
         'Digitalization': scores['digitalization_score'],
         'Environment': scores['environment_score'],
@@ -71,27 +80,26 @@ def generate_vessel_score_analysis(scores: Dict[str, float]) -> str:
         'Reliability': scores['reliability_score']
     }
     
-    strongest = max(component_scores.items(), key=lambda x: x[1])
-    weakest = min(component_scores.items(), key=lambda x: x[1])
+    strongest = max(score_components.items(), key=lambda x: x[1])
+    weakest = min(score_components.items(), key=lambda x: x[1])
     
-    # Generate analysis text
-    analysis = f"Overall vessel score is {vessel_score:.1f}%. "
+    analysis_points.append(f"Strongest performance in {strongest[0]} ({strongest[1]:.1f}%)")
+    analysis_points.append(f"Most improvement needed in {weakest[0]} ({weakest[1]:.1f}%)")
     
-    if vessel_score >= 75:
-        analysis += "The vessel is performing well overall. "
-    elif vessel_score >= 60:
-        analysis += "The vessel's performance is acceptable but has room for improvement. "
-    else:
-        analysis += "The vessel's performance requires immediate attention. "
-        
-    analysis += f"The strongest area is {strongest[0]} at {strongest[1]:.1f}%, "
-    analysis += f"while {weakest[0]} needs attention at {weakest[1]:.1f}%. "
+    # Generate recommendations
+    recommendations = []
+    for component, score in score_components.items():
+        if score < 60:
+            recommendations.append(f"Critical attention needed for {component}")
+        elif score < 75:
+            recommendations.append(f"Improvement recommended for {component}")
     
-    # Add recommendations
-    if weakest[1] < 60:
-        analysis += f"\n\nRecommendations:\n"
-        analysis += f"1. Prioritize improvements in {weakest[0]} performance\n"
-        analysis += "2. Develop action plan to address underperforming areas\n"
-        analysis += "3. Schedule regular performance reviews"
+    # Combine all analysis points
+    full_analysis = "\n\n".join([
+        "## Vessel Score Analysis",
+        "\n".join(analysis_points),
+        "## Recommendations" if recommendations else "",
+        "\n".join(recommendations)
+    ])
     
-    return analysis
+    return full_analysis
