@@ -12,6 +12,47 @@ import time
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+def display_image_in_streamlit(data: Dict, caption: str):
+    """Display an image from the Qdrant payload safely"""
+    try:
+        # Check if image_data exists in the payload
+        if 'image_data' not in data:
+            st.warning(f"No image data available for {caption}")
+            return
+            
+        image_data = data['image_data']
+        
+        try:
+            # Create columns for image display
+            col1, col2 = st.columns([3, 1])
+            
+            with col1:
+                file_name = data.get('file_name', 'Unknown document')
+                page = data.get('page', 'Unknown')
+                st.write(f"Source: {file_name}, Page: {page}")
+                st.image(image_data, caption=caption)
+            
+            # Add zoom functionality
+            with col2:
+                if st.button(f"Zoom {caption}"):
+                    st.session_state[f"zoom_{caption}"] = not st.session_state.get(f"zoom_{caption}", False)
+                
+                if st.session_state.get(f"zoom_{caption}", False):
+                    st.image(image_data, caption="Zoomed view", use_column_width=True)
+                    
+            # Show additional metadata if available
+            if data.get('surrounding_text'):
+                with st.expander("Image Context"):
+                    st.write(data['surrounding_text'])
+                    
+        except Exception as e:
+            st.error(f"Error displaying image: {str(e)}")
+            logger.error(f"Image display error: {e}")
+            
+    except Exception as e:
+        st.error(f"Error processing image data: {str(e)}")
+        logger.error(f"Image processing error: {e}")
+
 class EngineTroubleshootingRAG:
     """Handles engine troubleshooting queries using RAG approach."""
     
@@ -100,30 +141,46 @@ class EngineTroubleshootingRAG:
             return None
 
     def _search_qdrant(self, query_vector: List[float], max_retries: int = 3) -> List[Any]:
-        """Search Qdrant with retries"""
-        last_error = None
+        """Search Qdrant with retries and validate results"""
         for attempt in range(max_retries):
             try:
-                # Try searching without type filter first
                 results = self.qdrant_client.search(
                     collection_name="manual_vectors",
                     query_vector=query_vector,
                     limit=10
                 )
                 
-                if results:
-                    logger.info(f"Found {len(results)} results")
-                    return results
-                    
-                time.sleep(1)  # Small delay between retries
+                # Validate and process results
+                processed_results = []
+                for result in results:
+                    try:
+                        payload = result.payload
+                        # For image type, validate required fields
+                        if payload.get("type") == "image":
+                            required_fields = ["image_data", "file_name", "page", "image_name"]
+                            if all(field in payload for field in required_fields):
+                                processed_results.append(result)
+                            else:
+                                logger.warning(f"Skipping image result due to missing fields: {payload}")
+                        else:
+                            processed_results.append(result)
+                    except Exception as e:
+                        logger.warning(f"Error processing search result: {e}")
+                        continue
                 
+                if processed_results:
+                    logger.info(f"Found {len(processed_results)} valid results")
+                    return processed_results
+                
+                if attempt < max_retries - 1:
+                    time.sleep(1)
+                    
             except Exception as e:
-                last_error = e
                 logger.warning(f"Search attempt {attempt + 1} failed: {e}")
                 if attempt < max_retries - 1:
                     time.sleep(1 * (attempt + 1))
-        
-        logger.error(f"All Qdrant search attempts failed: {last_error}")
+                
+        logger.error("All search attempts failed or no valid results found")
         return []
 
     def process_engine_query(self, 
@@ -138,7 +195,7 @@ class EngineTroubleshootingRAG:
             # Get embedding for the question
             query_embedding = self.embedding_model.encode(question).tolist()
             
-            # Search Qdrant
+            # Search Qdrant with validation
             search_results = self._search_qdrant(query_embedding)
             if not search_results:
                 return ("No relevant engine documentation found. Please try a different query.", [])
@@ -154,10 +211,12 @@ class EngineTroubleshootingRAG:
                         context += f"From {payload.get('file_name', 'unknown')}, page {payload.get('page', 'unknown')}:\n"
                         context += f"{payload.get('content', '')}\n"
                     elif payload.get("type") == "image":
-                        relevant_images.append(payload)
-                        context += f"\nTechnical diagram: {payload.get('image_name', 'unknown')}"
-                        context += f" from {payload.get('file_name', 'unknown')}, page {payload.get('page', 'unknown')}:\n"
-                        context += f"Diagram context: {payload.get('surrounding_text', '')}\n"
+                        # Only add images with all required fields
+                        if all(field in payload for field in ["image_data", "file_name", "page", "image_name"]):
+                            relevant_images.append(payload)
+                            context += f"\nTechnical diagram: {payload['image_name']}"
+                            context += f" from {payload['file_name']}, page {payload['page']}:\n"
+                            context += f"Diagram context: {payload.get('surrounding_text', '')}\n"
                 except Exception as e:
                     logger.warning(f"Error processing search result: {e}")
                     continue
