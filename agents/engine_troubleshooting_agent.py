@@ -1,93 +1,16 @@
 import logging
-from typing import List, Dict, Tuple, Any, Optional
+from typing import List, Dict, Tuple, Any
 import openai
 from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
-from qdrant_client.http import models
-from qdrant_client.models import Filter, FieldCondition, Range
+from qdrant_client.models import Filter, FieldCondition
 import os
-import nltk
-from transformers import pipeline
 import streamlit as st
 import time
-from functools import lru_cache
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-def setup_nltk():
-    """Initialize NLTK data"""
-    try:
-        nltk_data_dir = '/tmp/nltk_data'
-        os.makedirs(nltk_data_dir, exist_ok=True)
-        nltk.data.path.append(nltk_data_dir)
-
-        resources = ['punkt', 'averaged_perceptron_tagger', 'maxent_ne_chunker', 'words']
-        for resource in resources:
-            try:
-                nltk.download(resource, quiet=True, download_dir=nltk_data_dir)
-            except Exception as e:
-                logger.warning(f"Failed to download NLTK resource {resource}: {e}")
-        return True
-    except Exception as e:
-        logger.error(f"Failed to setup NLTK: {e}")
-        return False
-
-@lru_cache(maxsize=1)
-def get_ner_pipeline():
-    """Get NER pipeline with caching"""
-    return pipeline("ner", model="dbmdz/bert-large-cased-finetuned-conll03-english")
-
-class EngineTextProcessor:
-    """Processes engine-related text with specialized technical understanding."""
-    
-    def __init__(self):
-        setup_nltk()
-        self.ner_model = get_ner_pipeline()
-        
-    def process_text(self, text: str) -> Dict[str, Any]:
-        try:
-            # Basic text processing
-            try:
-                sentences = nltk.sent_tokenize(text)
-                tokens = nltk.word_tokenize(text)
-                tagged = nltk.pos_tag(tokens)
-            except Exception as e:
-                logger.warning(f"NLTK processing failed: {e}")
-                sentences = [s.strip() for s in text.split('.') if s.strip()]
-                tokens = text.split()
-                tagged = [(word, 'NN') for word in tokens]
-            
-            # Named entity recognition
-            try:
-                ner_results = self.ner_model(text)
-                technical_entities = [entity['word'] for entity in ner_results 
-                                   if entity['entity'] != 'O']
-            except Exception as e:
-                logger.warning(f"NER processing failed: {e}")
-                technical_entities = []
-            
-            # Extract technical terms
-            technical_terms = [word for word, pos in tagged 
-                             if pos in ['NN', 'NNP', 'NNPS']]
-            
-            return {
-                'full_text': text,
-                'sentences': sentences,
-                'technical_entities': technical_entities,
-                'technical_terms': technical_terms,
-                'tokens': tokens
-            }
-        except Exception as e:
-            logger.error(f"Error in engine text processing: {e}")
-            return {
-                'full_text': text,
-                'sentences': [text],
-                'technical_entities': [],
-                'technical_terms': [],
-                'tokens': text.split()
-            }
 
 class EngineTroubleshootingRAG:
     """Handles engine troubleshooting queries using RAG approach."""
@@ -95,9 +18,45 @@ class EngineTroubleshootingRAG:
     def __init__(self):
         self.embedding_model = self._load_embedding_model()
         self.qdrant_client = self._init_qdrant_client()
-        self.text_processor = EngineTextProcessor()
         openai.api_key = self._get_api_key()
         
+        # Check vector store during initialization
+        if self.is_initialized():
+            self._check_vector_store()
+    
+    def _check_vector_store(self):
+        """Diagnostic function to check vector store"""
+        try:
+            # Check if collection exists
+            collections = self.qdrant_client.get_collections()
+            logger.info(f"Available collections: {collections}")
+            
+            # Get collection info
+            collection_info = self.qdrant_client.get_collection('manual_vectors')
+            logger.info(f"Collection info: {collection_info}")
+            
+            # Get a sample of vectors
+            sample = self.qdrant_client.scroll(
+                collection_name="manual_vectors",
+                limit=5,
+                with_payload=True,
+                with_vectors=False
+            )
+            
+            if sample[0]:  # if there are any vectors
+                logger.info("Sample vector payloads:")
+                for point in sample[0]:
+                    logger.info(f"Point ID: {point.id}")
+                    logger.info(f"Payload: {point.payload}")
+            else:
+                logger.warning("No vectors found in collection")
+                
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error checking vector store: {e}")
+            return False
+
     def is_initialized(self) -> bool:
         """Check if critical components are initialized"""
         return all([
@@ -145,18 +104,22 @@ class EngineTroubleshootingRAG:
         last_error = None
         for attempt in range(max_retries):
             try:
-                return self.qdrant_client.search(
+                # Try searching without type filter first
+                results = self.qdrant_client.search(
                     collection_name="manual_vectors",
                     query_vector=query_vector,
-                    limit=10,
-                    query_filter=Filter(
-                        must=[
-                            FieldCondition(key="type", match={"value": "engine"})
-                        ]
-                    )
+                    limit=10
                 )
+                
+                if results:
+                    logger.info(f"Found {len(results)} results")
+                    return results
+                    
+                time.sleep(1)  # Small delay between retries
+                
             except Exception as e:
                 last_error = e
+                logger.warning(f"Search attempt {attempt + 1} failed: {e}")
                 if attempt < max_retries - 1:
                     time.sleep(1 * (attempt + 1))
         
@@ -172,10 +135,7 @@ class EngineTroubleshootingRAG:
             return ("System initialization error. Please try again later.", [])
 
         try:
-            # Process the question
-            processed_question = self.text_processor.process_text(question)
-            
-            # Get embedding
+            # Get embedding for the question
             query_embedding = self.embedding_model.encode(question).tolist()
             
             # Search Qdrant
@@ -190,14 +150,14 @@ class EngineTroubleshootingRAG:
             for result in search_results:
                 try:
                     payload = result.payload
-                    if payload["type"] == "text":
-                        context += f"From {payload['file_name']}, page {payload['page']}:\n"
-                        context += f"{payload['content']}\n"
-                    elif payload["type"] == "image":
+                    if payload.get("type") == "text":
+                        context += f"From {payload.get('file_name', 'unknown')}, page {payload.get('page', 'unknown')}:\n"
+                        context += f"{payload.get('content', '')}\n"
+                    elif payload.get("type") == "image":
                         relevant_images.append(payload)
-                        context += f"\nTechnical diagram: {payload['image_name']}"
-                        context += f" from {payload['file_name']}, page {payload['page']}:\n"
-                        context += f"Diagram context: {payload['surrounding_text']}\n"
+                        context += f"\nTechnical diagram: {payload.get('image_name', 'unknown')}"
+                        context += f" from {payload.get('file_name', 'unknown')}, page {payload.get('page', 'unknown')}:\n"
+                        context += f"Diagram context: {payload.get('surrounding_text', '')}\n"
                 except Exception as e:
                     logger.warning(f"Error processing search result: {e}")
                     continue
