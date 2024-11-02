@@ -3,25 +3,41 @@ from typing import List, Dict, Tuple, Any, Optional
 import openai
 from sentence_transformers import SentenceTransformer
 from qdrant_client import QdrantClient
+from qdrant_client.http import models
 from qdrant_client.models import Filter, FieldCondition, Range
 import os
 import nltk
 from transformers import pipeline
 import streamlit as st
+import time
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def setup_nltk():
-    """Initialize NLTK data"""
+    """Initialize NLTK data with proper error handling"""
     try:
-        nltk.data.path.append('/tmp/nltk_data')
-        for resource in ['punkt', 'averaged_perceptron_tagger', 'maxent_ne_chunker', 'words']:
-            try:
-                nltk.download(resource, quiet=True, download_dir='/tmp/nltk_data')
-            except Exception as e:
-                logger.warning(f"Failed to download NLTK resource {resource}: {e}")
+        # Create the NLTK data directory if it doesn't exist
+        nltk_data_dir = '/tmp/nltk_data'
+        os.makedirs(nltk_data_dir, exist_ok=True)
+        nltk.data.path.append(nltk_data_dir)
+
+        # Download required NLTK data with retries
+        resources = ['punkt', 'averaged_perceptron_tagger', 'maxent_ne_chunker', 'words']
+        max_retries = 3
+        
+        for resource in resources:
+            for attempt in range(max_retries):
+                try:
+                    nltk.download(resource, quiet=True, download_dir=nltk_data_dir)
+                    break
+                except Exception as e:
+                    if attempt == max_retries - 1:
+                        logger.warning(f"Failed to download NLTK resource {resource}: {e}")
+                    else:
+                        time.sleep(1)  # Wait before retrying
+        
         return True
     except Exception as e:
         logger.error(f"Failed to setup NLTK: {e}")
@@ -32,24 +48,28 @@ class EngineTextProcessor:
     
     def __init__(self, ner_model):
         self.ner_model = ner_model
-        setup_nltk()  # Initialize NLTK data
+        self.nltk_initialized = setup_nltk()
         
     def process_text(self, text: str) -> Dict[str, Any]:
         try:
-            # Fallback to basic processing if NLTK fails
-            try:
-                sentences = nltk.sent_tokenize(text)
-                tokens = nltk.word_tokenize(text)
-                tagged = nltk.pos_tag(tokens)
-            except Exception as e:
-                logger.warning(f"NLTK processing failed: {e}")
-                sentences = [text]
+            # Simple sentence splitting if NLTK fails
+            if self.nltk_initialized:
+                try:
+                    sentences = nltk.sent_tokenize(text)
+                    tokens = nltk.word_tokenize(text)
+                    tagged = nltk.pos_tag(tokens)
+                except Exception:
+                    sentences = [s.strip() for s in text.split('.') if s.strip()]
+                    tokens = text.split()
+                    tagged = [(word, 'NN') for word in tokens]
+            else:
+                sentences = [s.strip() for s in text.split('.') if s.strip()]
                 tokens = text.split()
                 tagged = [(word, 'NN') for word in tokens]
             
-            # Named entity recognition with error handling
+            # NER processing with timeout
             try:
-                ner_results = self.ner_model(text)
+                ner_results = self.ner_model(text, timeout=5)  # 5 second timeout
                 technical_entities = [entity['word'] for entity in ner_results 
                                    if entity['entity'] != 'O']
             except Exception as e:
@@ -110,24 +130,20 @@ class EngineTroubleshootingRAG:
             return None
 
     def _init_qdrant_client(self):
+        """Initialize Qdrant client using st.secrets"""
         try:
-            # First try loading from st.secrets
-            if 'qdrant' in st.secrets:
-                return QdrantClient(
-                    url=st.secrets["qdrant"]["url"],
-                    api_key=st.secrets["qdrant"]["api_key"]
-                )
-            # Fallback to environment variables
-            else:
-                qdrant_url = os.getenv('QDRANT_URL')
-                qdrant_api_key = os.getenv('QDRANT_API_KEY')
-                if not qdrant_url or not qdrant_api_key:
-                    logger.error("Qdrant credentials not found in secrets or environment")
-                    return None
-                return QdrantClient(
-                    url=qdrant_url,
-                    api_key=qdrant_api_key
-                )
+            client = QdrantClient(
+                url=st.secrets["qdrant"]["url"],
+                api_key=st.secrets["qdrant"]["api_key"],
+                timeout=30  # Increase timeout to 30 seconds
+            )
+            # Test the connection
+            try:
+                client.get_collections()
+                return client
+            except Exception as e:
+                logger.error(f"Qdrant connection test failed: {e}")
+                return None
         except Exception as e:
             logger.error(f"Qdrant initialization failed: {e}")
             return None
@@ -145,46 +161,52 @@ class EngineTroubleshootingRAG:
             logger.error(f"Error getting OpenAI API key: {e}")
             return None
 
-    def process_engine_query(self, 
-                           question: str, 
-                           vessel_name: str = None, 
-                           chat_history: List[Dict] = None) -> Tuple[str, List[Dict]]:
-        """Process an engine-related query"""
-        if not self.is_initialized():
-            return ("System initialization error. Please try again later.", [])
-
-        try:
-            # Process the question with error handling
+    def _retry_qdrant_search(self, query_vector: List[float], max_retries: int = 3) -> List[Any]:
+        """Retry Qdrant search with exponential backoff"""
+        for attempt in range(max_retries):
             try:
-                processed_question = self.text_processor.process_text(question)
-            except Exception as e:
-                logger.warning(f"Text processing failed: {e}")
-                processed_question = {'full_text': question, 'sentences': [question]}
-
-            # Get embedding for the question
-            try:
-                query_embedding = self.embedding_model.encode(question).tolist()
-            except Exception as e:
-                logger.error(f"Error creating embedding: {e}")
-                return ("Error processing query. Please try again.", [])
-
-            # Search in Qdrant
-            try:
-                search_results = self.qdrant_client.search(
+                return self.qdrant_client.search(
                     collection_name="manual_vectors",
-                    query_vector=query_embedding,
+                    query_vector=query_vector,
                     limit=10,
                     query_filter=Filter(
                         must=[
                             FieldCondition(key="type", match={"value": "engine"})
                         ]
-                    )
+                    ),
+                    timeout=10  # 10 second timeout per attempt
                 )
             except Exception as e:
-                logger.error(f"Qdrant search failed: {e}")
-                return ("Error searching engine documentation. Please try again.", [])
+                wait_time = (2 ** attempt) + 1  # Exponential backoff
+                logger.warning(f"Qdrant search attempt {attempt + 1} failed: {e}")
+                if attempt < max_retries - 1:
+                    time.sleep(wait_time)
+                else:
+                    raise
 
-            # Process results with error handling
+    def process_engine_query(self, 
+                           question: str, 
+                           vessel_name: str = None, 
+                           chat_history: List[Dict] = None) -> Tuple[str, List[Dict]]:
+        """Process an engine-related query with improved error handling"""
+        if not self.is_initialized():
+            return ("System initialization error. Please try again later.", [])
+
+        try:
+            # Process the question
+            processed_question = self.text_processor.process_text(question)
+            
+            # Get embedding
+            query_embedding = self.embedding_model.encode(question).tolist()
+            
+            # Search with retries
+            try:
+                search_results = self._retry_qdrant_search(query_embedding)
+            except Exception as e:
+                logger.error(f"All Qdrant search attempts failed: {e}")
+                return ("Unable to search engine documentation. Please try again.", [])
+
+            # Process results
             context = ""
             relevant_images = []
             
@@ -203,7 +225,10 @@ class EngineTroubleshootingRAG:
                     logger.warning(f"Error processing search result: {e}")
                     continue
 
-            # Prepare chat messages
+            if not context:
+                return ("No relevant engine documentation found for your query.", [])
+
+            # Prepare messages
             messages = [
                 {"role": "system", "content": """You are an expert marine engineer 
                 specializing in engine troubleshooting. When answering:
@@ -226,19 +251,19 @@ class EngineTroubleshootingRAG:
                  f"Context:\n{context}\n\nQuestion about engine troubleshooting{vessel_context}: {question}"}
             ])
 
-            # Get response from GPT-4
+            # Get GPT response with timeout
             try:
                 response = openai.ChatCompletion.create(
                     model="gpt-4",
                     messages=messages,
-                    temperature=0.7
+                    temperature=0.7,
+                    timeout=30  # 30 second timeout
                 )
                 answer = response.choices[0].message['content'].strip()
+                return answer, relevant_images
             except Exception as e:
                 logger.error(f"OpenAI API error: {e}")
                 return ("Error generating response. Please try again.", relevant_images)
-
-            return answer, relevant_images
 
         except Exception as e:
             logger.error(f"Error processing engine query: {e}")
