@@ -596,117 +596,157 @@ def get_llm_decision(query: str) -> Dict[str, str]:
             "explanation": "Error occurred, defaulting to general info"
         }
 
+import streamlit as st
+import logging
+from typing import Dict, List
+import base64
+from PIL import Image
+import io
+import matplotlib.pyplot as plt
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 def handle_user_query(query: str) -> str:
     """Process user query and return appropriate response."""
     try:
+        st.session_state.setdefault('messages', [])
         decision_data = get_llm_decision(query)
         vessel_name = decision_data.get("vessel_name", "")
         decision_type = decision_data.get("decision", "general_info")
         response_type = decision_data.get("response_type", "concise")
         
         if not vessel_name and decision_type != "engine_troubleshooting":
-            return "I couldn't identify a vessel name in your query. Please specify the vessel name."
+            st.warning("I couldn't identify a vessel name in your query. Please specify the vessel name.")
+            return "Please specify a vessel name."
         
         # Store context in session state
         st.session_state.vessel_name = vessel_name
         st.session_state.decision_type = decision_type
         st.session_state.response_type = response_type
         
-        # Handle different types of requests
-        if decision_type == "engine_troubleshooting":
-            answer, images = analyze_engine_troubleshooting(vessel_name, query)
-            
-            # Display answer first
-            st.markdown("**Answer:** " + answer)
-            
-            # Display images if available
-            if images:
-                st.markdown("**Relevant Technical Diagrams:**")
-                for idx, img_data in enumerate(images, 1):
-                    try:
-                        st.markdown(f"### Image {idx}")
-                        file_name = img_data.get('file_name', 'Unknown document')
-                        page = img_data.get('page', 'Unknown')
-                        st.markdown(f"Source: {file_name}, Page: {page}")
-                        
-                        # Display image if image_data exists
-                        if 'image_data' in img_data:
-                            st.image(img_data['image_data'], 
-                                   caption=img_data.get('image_name', f'Image {idx}'))
-                            
-                            # Add zoom functionality
-                            if st.button(f"Zoom Image {idx}"):
-                                st.session_state[f"zoom_img_{idx}"] = not st.session_state.get(f"zoom_img_{idx}", False)
-                            
-                            if st.session_state.get(f"zoom_img_{idx}", False):
-                                st.image(img_data['image_data'], 
-                                       caption="Zoomed view",
-                                       use_column_width=True)
-                        
-                        # Display context if available
-                        if img_data.get('surrounding_text'):
-                            with st.expander("Image Context"):
-                                st.write(img_data['surrounding_text'])
-                                
-                    except Exception as e:
-                        st.warning(f"Could not display image {idx}")
-                        logger.error(f"Error displaying image {idx}: {e}")
-            
-            return answer
-            
-        elif decision_type == "vessel_synopsis":
-            show_vessel_synopsis(vessel_name)
-            return f"Here's the complete synopsis for {vessel_name}. Let me know if you need any specific information explained."
-        
-        elif decision_type == "hull_performance":
-            hull_analysis, power_loss, hull_condition, hull_chart = analyze_hull_performance(vessel_name)
-            if response_type == "concise":
-                return f"The hull of {vessel_name} is in {hull_condition} condition with {power_loss:.1f}% power loss. Would you like to see detailed analysis and charts?"
-            else:
-                st.pyplot(hull_chart)
-                return hull_analysis
-        
-        elif decision_type == "speed_consumption":
-            speed_analysis, speed_charts = analyze_speed_consumption(vessel_name)
-            if response_type == "concise":
-                return f"I've analyzed the speed consumption profile for {vessel_name}. Would you like to see the detailed analysis and charts?"
-            else:
-                st.pyplot(speed_charts)
-                return speed_analysis
-        
-        elif decision_type == "combined_performance":
-            hull_analysis, _, hull_condition, hull_chart = analyze_hull_performance(vessel_name)
-            speed_analysis, speed_charts = analyze_speed_consumption(vessel_name)
-            
-            if response_type == "concise":
-                return f"I have analyzed both hull and speed performance for {vessel_name}. Would you like to see the detailed analysis and charts?"
-            else:
-                st.pyplot(hull_chart)
-                st.pyplot(speed_charts)
-                return f"{hull_analysis}\n\n{speed_analysis}"
-        
-        elif decision_type == "vessel_score":
-            scores, analysis = analyze_vessel_score(vessel_name)
-            display_vessel_score(vessel_name)
-            return analysis
-        
-        elif decision_type == "crew_score":
-            scores, analysis = analyze_crew_score(vessel_name)
-            display_crew_score(vessel_name)
-            return analysis
-        
-        else:
-            return f"""I understand you're asking about {vessel_name}. What specific aspect would you like to know about?
-                    \n- Hull performance
-                    \n- Speed consumption
-                    \n- Vessel score
-                    \n- Crew performance
-                    \n- Engine troubleshooting
-                    \n- Complete vessel synopsis"""
+        try:
+            # Handle different types of requests
+            if decision_type == "engine_troubleshooting":
+                answer, images = analyze_engine_troubleshooting(vessel_name, query)
+                
+                # Display answer first
+                st.markdown("**Answer:** " + answer)
+                
+                # Display images if available
+                if images:
+                    st.markdown("**Relevant Technical Diagrams:**")
+                    cols = st.columns(2)
                     
+                    for idx, img_data in enumerate(images, 1):
+                        try:
+                            with cols[idx % 2]:
+                                st.markdown(f"#### Image {idx}")
+                                # Display source info
+                                st.markdown(f"*Source: {img_data.get('file_name', 'Unknown')}, "
+                                          f"Page: {img_data.get('page', 'Unknown')}*")
+                                
+                                # Display image
+                                if 'image_data' in img_data:
+                                    st.image(
+                                        img_data['image_data'],
+                                        caption=img_data.get('image_name', f'Image {idx}'),
+                                        use_column_width=True
+                                    )
+                                    
+                                    # Create unique key for zoom button
+                                    zoom_key = f"zoom_button_{vessel_name}_{idx}"
+                                    if st.button("Zoom", key=zoom_key):
+                                        st.session_state[zoom_key] = not st.session_state.get(zoom_key, False)
+                                    
+                                    if st.session_state.get(zoom_key, False):
+                                        st.image(
+                                            img_data['image_data'],
+                                            caption="Zoomed View",
+                                            use_column_width=True
+                                        )
+                                
+                                # Show context in expander
+                                if img_data.get('surrounding_text'):
+                                    with st.expander("Show Context", expanded=False):
+                                        st.markdown(img_data['surrounding_text'])
+                                        
+                        except Exception as e:
+                            st.error(f"Could not display image {idx}")
+                            logger.error(f"Image display error: {str(e)}")
+                            continue
+                
+                return answer
+                
+            elif decision_type == "vessel_synopsis":
+                show_vessel_synopsis(vessel_name)
+                return f"Here's the complete synopsis for {vessel_name}. Let me know if you need any specific information explained."
+            
+            elif decision_type == "hull_performance":
+                hull_analysis, power_loss, hull_condition, hull_chart = analyze_hull_performance(vessel_name)
+                if response_type == "concise":
+                    return f"The hull of {vessel_name} is in {hull_condition} condition with {power_loss:.1f}% power loss. Would you like to see detailed analysis and charts?"
+                else:
+                    if hull_chart:
+                        st.pyplot(hull_chart)
+                    return hull_analysis
+            
+            elif decision_type == "speed_consumption":
+                speed_analysis, speed_charts = analyze_speed_consumption(vessel_name)
+                if response_type == "concise":
+                    return f"I've analyzed the speed consumption profile for {vessel_name}. Would you like to see the detailed analysis and charts?"
+                else:
+                    if speed_charts:
+                        st.pyplot(speed_charts)
+                    return speed_analysis
+            
+            elif decision_type == "combined_performance":
+                hull_analysis, _, hull_condition, hull_chart = analyze_hull_performance(vessel_name)
+                speed_analysis, speed_charts = analyze_speed_consumption(vessel_name)
+                
+                if response_type == "concise":
+                    return f"I have analyzed both hull and speed performance for {vessel_name}. Would you like to see the detailed analysis and charts?"
+                else:
+                    if hull_chart:
+                        st.pyplot(hull_chart)
+                    if speed_charts:
+                        st.pyplot(speed_charts)
+                    return f"{hull_analysis}\n\n{speed_analysis}"
+            
+            elif decision_type == "vessel_score":
+                scores, analysis = analyze_vessel_score(vessel_name)
+                display_vessel_score(vessel_name)
+                return analysis
+            
+            elif decision_type == "crew_score":
+                scores, analysis = analyze_crew_score(vessel_name)
+                display_crew_score(vessel_name)
+                return analysis
+            
+            else:
+                options = [
+                    "- Hull performance",
+                    "- Speed consumption",
+                    "- Vessel score",
+                    "- Crew performance",
+                    "- Engine troubleshooting",
+                    "- Complete vessel synopsis"
+                ]
+                return (f"I understand you're asking about {vessel_name}. "
+                       f"What specific aspect would you like to know about?\n"
+                       + "\n".join(options))
+                
+        except Exception as e:
+            st.error("Error processing request")
+            logger.error(f"Error processing request type {decision_type}: {str(e)}")
+            return "Sorry, there was an error processing your request. Please try again."
+            
     except Exception as e:
-        logger.error(f"Error in handle_user_query: {e}")
+        st.error("Error processing query")
+        logger.error(f"Error in handle_user_query: {str(e)}")
         return "Sorry, I encountered an error processing your query. Please try again."
+        
 
 def handle_follow_up(query: str):
     """Handle follow-up requests for more information or charts."""
