@@ -18,8 +18,14 @@ from agents.engine_troubleshooting_agent import analyze_engine_troubleshooting
 # LLM Prompts
 DECISION_PROMPT = """
 You are an AI assistant specialized in vessel performance analysis. The user will ask a query related to vessel performance. Based on the user's query, do two things:
-1. Extract only the vessel name from the query. The vessel name may appear after the word 'of' (e.g., 'hull performance of Trammo Marycam' => 'Trammo Marycam').
-2. Determine what type of information is needed to answer the user's query. The options are:
+1. For vessel performance queries:
+   Extract the vessel name from the query. The vessel name may appear after the word 'of' (e.g., 'hull performance of Trammo Marycam' => 'Trammo Marycam').
+
+2. For engine-related queries:
+   - Vessel name is optional
+   - If query is about engine components, maintenance, overhaul, assembling, dismantling, or troubleshooting, classify as "engine_troubleshooting" even without vessel name
+
+3. Determine what type of information is needed to answer the user's query. The options are:
    - Hull performance
    - Speed consumption
    - Combined performance (both hull and speed)
@@ -37,14 +43,13 @@ Choose the decision based on these rules:
 - If the user asks only about "speed consumption," return "speed_consumption"
 - If the user asks about "vessel score" or "performance score," return "vessel_score"
 - If the user asks about "crew performance" or "crew score," return "crew_score"
-- If the user asks about "engine problems", "engine maintenance", "overhaul", "dismantling", "assembly", "engine troubleshooting", or specific engine components, return "engine_troubleshooting"
-- If the query contains words like "engine failure", "engine repair", "engine maintenance", return "engine_troubleshooting"
-
+- If the query contains words like "engine", "overhaul", "maintenance", "repair", "troubleshoot", return "engine_troubleshooting"
+- For engine queries, vessel name is optional and can be null
 
 Output your response as a JSON object with the following structure:
 {
-    "vessel_name": "<vessel_name>",
-    "decision": "hull_performance" or "speed_consumption" or "combined_performance" or "vessel_synopsis" or "general_info" or "vessel_score" or "crew_score",
+    "vessel_name": "<vessel_name or null for engine queries>",
+    "decision": "hull_performance" or "speed_consumption" or "combined_performance" or "vessel_synopsis" or "general_info" or "vessel_score" or "crew_score" or "engine_troubleshooting",
     "response_type": "concise" or "detailed",
     "explanation": "Brief explanation of why you made this decision"
 }
@@ -594,11 +599,28 @@ def get_llm_decision(query: str) -> Dict[str, str]:
 def handle_user_query(query: str) -> str:
     """Process user query and return appropriate response."""
     decision_data = get_llm_decision(query)
-    vessel_name = decision_data.get("vessel_name", "")
     decision_type = decision_data.get("decision", "general_info")
+    vessel_name = decision_data.get("vessel_name", "")
     response_type = decision_data.get("response_type", "concise")
     
-    if not vessel_name:
+    # Special handling for engine troubleshooting queries
+    if decision_type == "engine_troubleshooting":
+        answer, diagrams = analyze_engine_troubleshooting(vessel_name, query)
+        
+        # Display any technical diagrams if available
+        if diagrams:
+            st.write("**Relevant Technical Diagrams:**")
+            for idx, diagram in enumerate(diagrams):
+                st.write(f"\n### Diagram {idx + 1}: {diagram['image_name']}")
+                display_image_in_streamlit(
+                    diagram['image_data'],
+                    f"Technical Diagram {idx + 1}"
+                )
+        
+        return answer
+    
+    # For non-engine queries, require vessel name
+    if not vessel_name and decision_type != "engine_troubleshooting":
         return "I couldn't identify a vessel name in your query. Please specify the vessel name."
     
     # Store context in session state
@@ -606,6 +628,7 @@ def handle_user_query(query: str) -> str:
     st.session_state.decision_type = decision_type
     st.session_state.response_type = response_type
     
+        
     # Handle different types of requests
     if decision_type == "engine_troubleshooting":
         answer, diagrams = analyze_engine_troubleshooting(vessel_name, query)
