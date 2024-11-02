@@ -608,10 +608,21 @@ import matplotlib.pyplot as plt
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+import streamlit as st
+import logging
+from typing import Dict, List
+import base64
+from PIL import Image
+import io
+import traceback
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 def handle_user_query(query: str) -> str:
     """Process user query and return appropriate response."""
     try:
-        st.session_state.setdefault('messages', [])
         decision_data = get_llm_decision(query)
         vessel_name = decision_data.get("vessel_name", "")
         decision_type = decision_data.get("decision", "general_info")
@@ -627,7 +638,6 @@ def handle_user_query(query: str) -> str:
         st.session_state.response_type = response_type
         
         try:
-            # Handle different types of requests
             if decision_type == "engine_troubleshooting":
                 answer, images = analyze_engine_troubleshooting(vessel_name, query)
                 
@@ -635,46 +645,45 @@ def handle_user_query(query: str) -> str:
                 st.markdown("**Answer:** " + answer)
                 
                 # Display images if available
-                if images:
+                if images and len(images) > 0:
                     st.markdown("**Relevant Technical Diagrams:**")
-                    cols = st.columns(2)
                     
                     for idx, img_data in enumerate(images, 1):
                         try:
-                            with cols[idx % 2]:
-                                st.markdown(f"#### Image {idx}")
-                                # Display source info
+                            # Create container for each image
+                            with st.container():
+                                st.markdown(f"**Image {idx}**")
                                 st.markdown(f"*Source: {img_data.get('file_name', 'Unknown')}, "
                                           f"Page: {img_data.get('page', 'Unknown')}*")
                                 
-                                # Display image
-                                if 'image_data' in img_data:
-                                    st.image(
-                                        img_data['image_data'],
-                                        caption=img_data.get('image_name', f'Image {idx}'),
-                                        use_column_width=True
-                                    )
-                                    
-                                    # Create unique key for zoom button
-                                    zoom_key = f"zoom_button_{vessel_name}_{idx}"
-                                    if st.button("Zoom", key=zoom_key):
-                                        st.session_state[zoom_key] = not st.session_state.get(zoom_key, False)
-                                    
-                                    if st.session_state.get(zoom_key, False):
-                                        st.image(
-                                            img_data['image_data'],
-                                            caption="Zoomed View",
-                                            use_column_width=True
-                                        )
-                                
-                                # Show context in expander
-                                if img_data.get('surrounding_text'):
-                                    with st.expander("Show Context", expanded=False):
-                                        st.markdown(img_data['surrounding_text'])
+                                # Check if image data exists
+                                if 'image_data' in img_data and img_data['image_data']:
+                                    try:
+                                        # Convert base64 to image if needed
+                                        if isinstance(img_data['image_data'], str):
+                                            image_bytes = base64.b64decode(img_data['image_data'])
+                                            image = Image.open(io.BytesIO(image_bytes))
+                                        else:
+                                            image = img_data['image_data']
                                         
+                                        # Display image
+                                        st.image(image, 
+                                               caption=img_data.get('image_name', f'Technical Diagram {idx}'),
+                                               use_column_width=True)
+                                        
+                                        # Add expander for image context
+                                        if img_data.get('surrounding_text'):
+                                            with st.expander("Image Context"):
+                                                st.markdown(img_data['surrounding_text'])
+                                    except Exception as e:
+                                        st.error(f"Error displaying image content for Image {idx}")
+                                        logger.error(f"Image content error: {str(e)}")
+                                else:
+                                    st.warning(f"No image data available for Image {idx}")
+                                    
                         except Exception as e:
-                            st.error(f"Could not display image {idx}")
-                            logger.error(f"Image display error: {str(e)}")
+                            st.error(f"Error processing image {idx}")
+                            logger.error(f"Image processing error: {str(e)}")
                             continue
                 
                 return answer
@@ -738,16 +747,20 @@ def handle_user_query(query: str) -> str:
                        + "\n".join(options))
                 
         except Exception as e:
-            st.error("Error processing request")
-            logger.error(f"Error processing request type {decision_type}: {str(e)}")
+            error_msg = f"Error processing request type {decision_type}: {str(e)}"
+            logger.error(error_msg)
+            logger.error(traceback.format_exc())  # Log full traceback
+            st.error("Error processing request. Please try again.")
             return "Sorry, there was an error processing your request. Please try again."
             
     except Exception as e:
-        st.error("Error processing query")
-        logger.error(f"Error in handle_user_query: {str(e)}")
+        error_msg = f"Error in handle_user_query: {str(e)}"
+        logger.error(error_msg)
+        logger.error(traceback.format_exc())  # Log full traceback
+        st.error("Error processing query. Please try again.")
         return "Sorry, I encountered an error processing your query. Please try again."
-        
 
+        
 def handle_follow_up(query: str):
     """Handle follow-up requests for more information or charts."""
     if 'vessel_name' not in st.session_state or 'decision_type' not in st.session_state:
