@@ -599,28 +599,11 @@ def get_llm_decision(query: str) -> Dict[str, str]:
 def handle_user_query(query: str) -> str:
     """Process user query and return appropriate response."""
     decision_data = get_llm_decision(query)
-    decision_type = decision_data.get("decision", "general_info")
     vessel_name = decision_data.get("vessel_name", "")
+    decision_type = decision_data.get("decision", "general_info")
     response_type = decision_data.get("response_type", "concise")
     
-    # Special handling for engine troubleshooting queries
-    if decision_type == "engine_troubleshooting":
-        answer, diagrams = analyze_engine_troubleshooting(vessel_name, query)
-        
-        # Display any technical diagrams if available
-        if diagrams:
-            st.write("**Relevant Technical Diagrams:**")
-            for idx, diagram in enumerate(diagrams):
-                st.write(f"\n### Diagram {idx + 1}: {diagram['image_name']}")
-                display_image_in_streamlit(
-                    diagram['image_data'],
-                    f"Technical Diagram {idx + 1}"
-                )
-        
-        return answer
-    
-    # For non-engine queries, require vessel name
-    if not vessel_name and decision_type != "engine_troubleshooting":
+    if not vessel_name:
         return "I couldn't identify a vessel name in your query. Please specify the vessel name."
     
     # Store context in session state
@@ -628,24 +611,29 @@ def handle_user_query(query: str) -> str:
     st.session_state.decision_type = decision_type
     st.session_state.response_type = response_type
     
-        
     # Handle different types of requests
     if decision_type == "engine_troubleshooting":
-        answer, diagrams = analyze_engine_troubleshooting(vessel_name, query)
+        answer, images = analyze_engine_troubleshooting(vessel_name, query)
         
-        # Display any technical diagrams if available
-        if diagrams:
+        # Display answer first
+        st.write("**Answer:**", answer)
+        
+        # Display images if available
+        if images:
             st.write("**Relevant Technical Diagrams:**")
-            for idx, diagram in enumerate(diagrams):
-                st.write(f"\n### Diagram {idx + 1}: {diagram['image_name']}")
-                display_image_in_streamlit(
-                    diagram['image_data'],
-                    f"Technical Diagram {idx + 1}"
-                )
+            for idx, img_data in enumerate(images, 1):
+                try:
+                    # Create a meaningful caption
+                    caption = f"Diagram {idx}: From {img_data.get('file_name', 'Unknown')}, Page {img_data.get('page', 'Unknown')}"
+                    display_image_in_streamlit(img_data, caption)
+                except Exception as e:
+                    logger.error(f"Error displaying image {idx}: {e}")
+                    st.warning(f"Could not display diagram {idx}")
         
         return answer
         
     elif decision_type == "vessel_synopsis":
+        
         show_vessel_synopsis(vessel_name)
         return f"Here's the complete synopsis for {vessel_name}. Let me know if you need any specific information explained."
     
