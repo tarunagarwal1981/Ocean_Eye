@@ -620,6 +620,18 @@ import traceback
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+import streamlit as st
+import logging
+from typing import Dict, List
+import base64
+from PIL import Image
+import io
+import traceback
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
 def handle_user_query(query: str) -> str:
     """Process user query and return appropriate response."""
     try:
@@ -641,52 +653,56 @@ def handle_user_query(query: str) -> str:
             if decision_type == "engine_troubleshooting":
                 answer, images = analyze_engine_troubleshooting(vessel_name, query)
                 
-                # Display answer first
-                st.markdown("**Answer:** " + answer)
-                
-                # Display images if available
-                if images and len(images) > 0:
-                    st.markdown("**Relevant Technical Diagrams:**")
+                # Create a container for the entire response
+                with st.container():
+                    # Display answer once
+                    st.markdown("**Answer:**")
+                    st.markdown(answer)
                     
-                    for idx, img_data in enumerate(images, 1):
-                        try:
-                            # Create container for each image
-                            with st.container():
-                                st.markdown(f"**Image {idx}**")
-                                st.markdown(f"*Source: {img_data.get('file_name', 'Unknown')}, "
-                                          f"Page: {img_data.get('page', 'Unknown')}*")
-                                
-                                # Check if image data exists
-                                if 'image_data' in img_data and img_data['image_data']:
-                                    try:
-                                        # Convert base64 to image if needed
-                                        if isinstance(img_data['image_data'], str):
-                                            image_bytes = base64.b64decode(img_data['image_data'])
-                                            image = Image.open(io.BytesIO(image_bytes))
-                                        else:
-                                            image = img_data['image_data']
-                                        
-                                        # Display image
-                                        st.image(image, 
-                                               caption=img_data.get('image_name', f'Technical Diagram {idx}'),
-                                               use_column_width=True)
-                                        
-                                        # Add expander for image context
-                                        if img_data.get('surrounding_text'):
-                                            with st.expander("Image Context"):
-                                                st.markdown(img_data['surrounding_text'])
-                                    except Exception as e:
-                                        st.error(f"Error displaying image content for Image {idx}")
-                                        logger.error(f"Image content error: {str(e)}")
-                                else:
-                                    st.warning(f"No image data available for Image {idx}")
+                    # Display images if available
+                    if images and len(images) > 0:
+                        st.markdown("**Relevant Technical Diagrams:**")
+                        
+                        for idx, img_data in enumerate(images, 1):
+                            try:
+                                # Create container for each image
+                                with st.container():
+                                    st.markdown(f"**Image {idx}**")
+                                    st.markdown(f"*Source: {img_data.get('file_name', 'Unknown')}, "
+                                              f"Page: {img_data.get('page', 'Unknown')}*")
                                     
-                        except Exception as e:
-                            st.error(f"Error processing image {idx}")
-                            logger.error(f"Image processing error: {str(e)}")
-                            continue
+                                    # Check if image data exists
+                                    if 'image_data' in img_data and img_data['image_data']:
+                                        try:
+                                            # Convert base64 to image if needed
+                                            if isinstance(img_data['image_data'], str):
+                                                image_bytes = base64.b64decode(img_data['image_data'])
+                                                image = Image.open(io.BytesIO(image_bytes))
+                                            else:
+                                                image = img_data['image_data']
+                                            
+                                            # Display image
+                                            st.image(image, 
+                                                   caption=img_data.get('image_name', f'Technical Diagram {idx}'),
+                                                   use_column_width=True)
+                                            
+                                            # Add expander for image context
+                                            if img_data.get('surrounding_text'):
+                                                with st.expander("Image Context"):
+                                                    st.markdown(img_data['surrounding_text'])
+                                        except Exception as e:
+                                            st.error(f"Error displaying image content for Image {idx}")
+                                            logger.error(f"Image content error: {str(e)}")
+                                    else:
+                                        st.warning(f"No image data available for Image {idx}")
+                                    
+                            except Exception as e:
+                                st.error(f"Error processing image {idx}")
+                                logger.error(f"Image processing error: {str(e)}")
+                                continue
                 
-                return answer
+                # Return a simple confirmation instead of the answer
+                return "Engine troubleshooting information displayed above."
                 
             elif decision_type == "vessel_synopsis":
                 show_vessel_synopsis(vessel_name)
@@ -749,14 +765,14 @@ def handle_user_query(query: str) -> str:
         except Exception as e:
             error_msg = f"Error processing request type {decision_type}: {str(e)}"
             logger.error(error_msg)
-            logger.error(traceback.format_exc())  # Log full traceback
+            logger.error(traceback.format_exc())
             st.error("Error processing request. Please try again.")
             return "Sorry, there was an error processing your request. Please try again."
             
     except Exception as e:
         error_msg = f"Error in handle_user_query: {str(e)}"
         logger.error(error_msg)
-        logger.error(traceback.format_exc())  # Log full traceback
+        logger.error(traceback.format_exc())
         st.error("Error processing query. Please try again.")
         return "Sorry, I encountered an error processing your query. Please try again."
 
